@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="vi">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>LoS (Local Share) - Chia sẻ file tức thì!</title>
+
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+            rel="stylesheet"
+        />
+
+        <link rel="apple-touch-icon" sizes="180x180" href="./images/apple-touch-icon.png" />
+        <link rel="icon" type="image/png" sizes="32x32" href="./images/favicon-32x32.png" />
+        <link rel="icon" type="image/png" sizes="16x16" href="./images/favicon-16x16.png" />
+
+        <link rel="stylesheet" href="./src/style.css" />
+        <link rel="manifest" href="./manifest.json" />
+        <meta name="theme-color" content="#ffffff" />
+    </head>
+
+    <body>
+        <div id="file-preview-overlay" class="file-preview-overlay hidden">
+            <div class="preview-header">
+                <span id="preview-filename"></span>
+                <div class="preview-actions">
+                    <a id="preview-download-btn" class="preview-button" title="Tải xuống file này">
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            fill="currentColor"
+                            width="20"
+                            height="20"
+                        >
+                            <path
+                                d="M11 5a1 1 0 1 1 2 0v7.586l1.707-1.707a1 1 0 1 1 1.414 1.414l-3.414 3.414a1 1 0 0 1-1.414 0L8.879 12.293a1 1 0 1 1 1.414-1.414L12 12.586V5z"
+                            />
+                            <path
+                                d="M4 15a1 1 0 0 0-1 1v3a3 3 0 0 0 3 3h12a3 3 0 0 0 3-3v-3a1 1 0 1 0-2 0v3a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-3a1 1 0 0 0-1-1z"
+                            />
+                        </svg>
+                        <span>Tải xuống</span>
+                    </a>
+                    <button id="preview-close-btn" class="preview-button close-btn" title="Đóng">
+                        &times;
+                    </button>
+                </div>
+            </div>
+            <div id="preview-content" class="preview-content"></div>
+        </div>
+
+        <div id="preloader" class="preloader-container hidden">
+            <div class="spinner"></div>
+        </div>
+
+        <button id="install-button" class="install-fab hidden" title="Cài đặt ứng dụng">
+            <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                width="22"
+                height="22"
+            >
+                <path
+                    d="M11 5a1 1 0 1 1 2 0v7.586l1.707-1.707a1 1 0 1 1 1.414 1.414l-3.414 3.414a1 1 0 0 1-1.414 0L8.879 12.293a1 1 0 1 1 1.414-1.414L12 12.586V5z"
+                />
+                <path
+                    d="M4 15a1 1 0 0 0-1 1v3a3 3 0 0 0 3 3h12a3 3 0 0 0 3-3v-3a1 1 0 1 0-2 0v3a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-3a1 1 0 0 0-1-1z"
+                />
+            </svg>
+            <span>Cài đặt ứng dụng</span>
+        </button>
+
+        <main id="landing-page" class="page">
+            <div class="landing-container">
+                <section id="hero">
+                    <img
+                        class="logo"
+                        src="./images/apple-touch-icon.png"
+                        width="70"
+                        height="70"
+                        alt=""
+                    />
+                    <h1 class="hero-title">
+                        Chia sẻ file tức thì! <br />Với các thiết bị gần bạn.
+                    </h1>
+                    <p class="hero-subtitle">
+                        LoS (Local Share) giúp bạn chia sẻ mọi tập tin giữa các thiết bị trong cùng
+                        mạng Wi-Fi hoàn toàn miễn phí và đa nền tảng.
+                    </p>
+                    <button id="enter-app-button" class="button cta-button">Bắt đầu chia sẻ</button>
+                </section>
+
+                <section id="features">
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke-width="1.5"
+                                stroke="currentColor"
+                                class="size-6"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    d="M14.25 6.087c0-.355.186-.676.401-.959.221-.29.349-.634.349-1.003 0-1.036-1.007-1.875-2.25-1.875s-2.25.84-2.25 1.875c0 .369.128.713.349 1.003.215.283.401.604.401.959v0a.64.64 0 0 1-.657.643 48.39 48.39 0 0 1-4.163-.3c.186 1.613.293 3.25.315 4.907a.656.656 0 0 1-.658.663v0c-.355 0-.676-.186-.959-.401a1.647 1.647 0 0 0-1.003-.349c-1.036 0-1.875 1.007-1.875 2.25s.84 2.25 1.875 2.25c.369 0 .713-.128 1.003-.349.283-.215.604-.401.959-.401v0c.31 0 .555.26.532.57a48.039 48.039 0 0 1-.642 5.056c1.518.19 3.058.309 4.616.354a.64.64 0 0 0 .657-.643v0c0-.355-.186-.676-.401-.959a1.647 1.647 0 0 1-.349-1.003c0-1.035 1.008-1.875 2.25-1.875 1.243 0 2.25.84 2.25 1.875 0 .369-.128.713-.349 1.003-.215.283-.4.604-.4.959v0c0 .333.277.599.61.58a48.1 48.1 0 0 0 5.427-.63 48.05 48.05 0 0 0 .582-4.717.532.532 0 0 0-.533-.57v0c-.355 0-.676.186-.959.401-.29.221-.634.349-1.003.349-1.035 0-1.875-1.007-1.875-2.25s.84-2.25 1.875-2.25c.37 0 .713.128 1.003.349.283.215.604.401.96.401v0a.656.656 0 0 0 .658-.663 48.422 48.422 0 0 0-.37-5.36c-1.886.342-3.81.574-5.766.689a.578.578 0 0 1-.61-.58v0Z"
+                                />
+                            </svg>
+                        </div>
+                        <h3>Đa nền tảng</h3>
+                        <p>
+                            LoS hỗ trợ chia sẻ file giữa nhiều hệ điều hành và thiết bị khác nhau.
+                        </p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke-width="1.5"
+                                stroke="currentColor"
+                                class="size-6"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z"
+                                />
+                            </svg>
+                        </div>
+                        <h3>Bảo mật</h3>
+                        <p>
+                            File được gửi trực tiếp bằng mạng giữa các thiết bị, không qua máy chủ.
+                        </p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke-width="1.5"
+                                stroke="currentColor"
+                                class="size-6"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z"
+                                />
+                            </svg>
+                        </div>
+                        <h3>Phi lợi nhuận</h3>
+                        <p>LoS là phần mềm mã nguồn mở, miễn phí và không có quảng cáo.</p>
+                    </div>
+                </section>
+
+                <footer class="landing-footer">
+                    <p>
+                        Created with ❤️ by trchicuong.
+                        <a
+                            href="https://github.com/trchicuong/local-share"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            >Xem trên GitHub</a
+                        >
+                    </p>
+                </footer>
+            </div>
+        </main>
+
+        <main id="app-page" class="page hidden">
+            <div class="app-container">
+                <header class="app-header">
+                    <h1>LoS (Local Share)</h1>
+                    <p>ID thiết bị: <strong id="my-id">Đang chờ...</strong></p>
+                </header>
+
+                <div class="card file-card">
+                    <h3>1. Chọn hoặc kéo thả file</h3>
+                    <div class="file-area">
+                        <input type="file" id="fileInput" />
+                        <label for="fileInput" class="button">Chọn File</label>
+                        <p id="file-name"></p>
+                        <small
+                            style="font-weight: bold; background-color: yellow"
+                            id="file-size-note"
+                            class="file-note"
+                        ></small
+                        ><br />
+                        <small id="file-warning" class="file-warning hidden" role="alert"></small>
+                    </div>
+                </div>
+
+                <div class="card devices-card">
+                    <h3>2. Chọn thiết bị để gửi</h3>
+                    <ul id="device-list">
+                        <li class="no-device">Đang tìm các thiết bị khác...</li>
+                    </ul>
+                </div>
+
+                <div class="card status-card">
+                    <h3>Trạng thái kết nối</h3>
+                    <div class="connection-status">
+                        <div class="status-indicator" id="connection-indicator">
+                            <span class="status-dot"></span>
+                            <span id="status-text">Đang chờ kết nối...</span>
+                        </div>
+                        <div class="connection-details" id="connection-details">
+                            <small id="connection-info">Đang kiểm tra kết nối...</small>
+                        </div>
+                    </div>
+                    <progress id="progress-bar" value="0" max="100" class="hidden"></progress>
+                    <div class="network-info" id="network-info">
+                        <div class="info-item">
+                            <span>Ping:</span>
+                            <span id="ping-value">--</span>
+                        </div>
+                        <div class="info-item">
+                            <span>Chất lượng:</span>
+                            <span id="connection-quality">Đang kiểm tra...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card faq-card">
+                    <h3>Mẹo & Hỗ trợ</h3>
+
+                    <div class="faq-item">
+                        <div class="faq-question">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke-width="1.5"
+                                stroke="currentColor"
+                                class="size-6"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244"
+                                />
+                            </svg>
+                            <h4>Không thấy thiết bị nào?</h4>
+                        </div>
+                        <p>
+                            Hãy chắc chắn rằng tất cả các thiết bị của bạn (điện thoại, máy tính)
+                            đều đang kết nối vào
+                            <strong>cùng một mạng Wi-Fi</strong>. LoS chỉ hoạt động trong mạng nội
+                            bộ.
+                        </p>
+                    </div>
+
+                    <div class="faq-item">
+                        <div class="faq-question">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke-width="1.5"
+                                stroke="currentColor"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.007H12v-.007z"
+                                />
+                            </svg>
+                            <h4>Không gửi được file?</h4>
+                        </div>
+                        <p>
+                            Một số mạng Wi-Fi (công ty, công cộng) có tường lửa chặn kết nối.
+                            <strong>Giải pháp:</strong> Dùng điện thoại của bạn để
+                            <strong>phát Wi-Fi 4G/5G (Mobile Hotspot)</strong>
+                            và kết nối các thiết bị vào mạng đó để gửi lại.
+                        </p>
+                    </div>
+
+                    <div class="faq-item">
+                        <div class="faq-question">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke-width="1.5"
+                                stroke="currentColor"
+                                class="size-6"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    d="m3.75 13.5 10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z"
+                                />
+                            </svg>
+                            <h4>Tốc độ gửi file chậm?</h4>
+                        </div>
+                        <p>
+                            Tốc độ phụ thuộc vào
+                            <strong>chất lượng mạng Wi-Fi và cấu hình thiết bị</strong>. Hãy thử di
+                            chuyển các thiết bị lại gần router Wi-Fi hơn hoặc tắt các ứng dụng không
+                            cần thiết để cải thiện tốc độ.
+                        </p>
+                    </div>
+
+                    <div class="faq-item">
+                        <div class="faq-question">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke-width="1.5"
+                                stroke="currentColor"
+                                class="size-6"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    d="M9.75 9.75l4.5 4.5m0-4.5-4.5 4.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
+                                />
+                            </svg>
+                            <h4>Gửi file bị treo hoặc thất bại?</h4>
+                        </div>
+                        <p>
+                            Điều này có thể do thiết bị chuyển sang chế độ ngủ, kết nối Wi-Fi không
+                            ổn định, hoặc
+                            <strong>cấu hình thiết bị yếu</strong> (đặc biệt khi gửi file lớn). Hãy
+                            đảm bảo
+                            <strong>màn hình của cả hai thiết bị luôn sáng</strong>
+                            và thử di chuyển chúng lại gần router Wi-Fi hơn.
+                        </p>
+                    </div>
+                </div>
+
+                <div id="install-prompt-banner" class="prompt-banner hidden">
+                    <div class="prompt-icon">💡</div>
+                    <p class="prompt-text">
+                        <strong>Trải nghiệm tốt nhất!</strong><br />
+                        Cài đặt ứng dụng này lên màn hình chính để truy cập nhanh và tiện lợi hơn.
+                    </p>
+                    <button id="close-prompt-btn" class="close-btn" title="Đóng">&times;</button>
+                </div>
+
+                <div id="ios-install-prompt" class="prompt-banner hidden">
+                    <div class="prompt-icon">📱</div>
+                    <p class="prompt-text">
+                        <strong>Cài đặt trên Mobile?</strong><br />
+                        Nhấn vào nút
+                        <svg
+                            width="18"
+                            height="18"
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke-width="1.5"
+                            stroke="currentColor"
+                            class="size-6"
+                        >
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                d="M6.75 12a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0ZM12.75 12a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0ZM18.75 12a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z"
+                            />
+                        </svg>
+                        Chia sẻ, sau đó chọn "Thêm vào MH chính".
+                    </p>
+                    <button id="close-ios-prompt-btn" class="close-btn" title="Đóng">
+                        &times;
+                    </button>
+                </div>
+            </div>
+        </main>
+
+        <script type="module" src="./src/main.js"></script>
+    </body>
+</html>

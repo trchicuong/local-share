@@ -1,0 +1,24 @@
+{
+    "name": "local-share",
+    "private": true,
+    "version": "1.0.0",
+    "type": "module",
+    "scripts": {
+        "dev": "vite",
+        "build": "vite build",
+        "build:client": "vite build",
+        "start": "node server.js",
+        "server": "node server.js",
+        "server:dev": "nodemon server.js",
+        "preview": "vite preview"
+    },
+    "devDependencies": {
+        "vite": "^5.4.20"
+    },
+    "dependencies": {
+        "cors": "^2.8.5",
+        "dotenv": "^17.2.3",
+        "express": "^4.19.2",
+        "ws": "^8.17.0"
+    }
+}
