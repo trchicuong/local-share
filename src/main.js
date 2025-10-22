@@ -12,10 +12,10 @@ const appPage = document.getElementById('app-page');
 const peerIdEl = document.getElementById('my-id');
 const peerListEl = document.getElementById('device-list');
 const progressEl = document.getElementById('progress-bar');
-const diagnosticsEl = document.getElementById('ping-value');
+const serverPingEl = document.getElementById('server-ping');
+const p2pPingEl = document.getElementById('p2p-ping');
 const connectionIndicatorEl = document.getElementById('connection-indicator');
 const connectionInfoEl = document.getElementById('connection-info');
-const connectionQualityEl = document.getElementById('connection-quality');
 const installBtn = document.getElementById('install-button');
 const installBanner = document.getElementById('install-prompt-banner');
 const iosBanner = document.getElementById('ios-install-prompt');
@@ -64,6 +64,8 @@ let pendingFileToSend = null;
 let peerDevices = new Map();
 let myDeviceInfo = null;
 let networkTestInterval = null; // Track interval for cleanup
+let p2pPingInterval = null; // Track P2P ping interval
+let p2pPingStats = {}; // Store P2P ping timestamps
 
 const WARNING_THRESHOLD = 500 * 1024 * 1024; // 500MB - show warning for large files
 const PREVIEW_LIMIT = 500 * 1024 * 1024; // 500MB - prevent in-browser preview to avoid OOM
@@ -321,11 +323,17 @@ function connectWebSocket() {
         deviceInfo: myDeviceInfo,
       }),
     );
+
+    // Start network monitoring when WebSocket connected
+    startNetworkMonitoring();
   };
   ws.onmessage = handleSignalMessage;
   ws.onclose = () => {
     hidePreloader();
     setStatus('Kết nối tới máy chủ bị ngắt. Kiểm tra mạng hoặc tải lại trang.', 'error');
+
+    // Stop network monitoring when WebSocket disconnected
+    stopNetworkMonitoring();
   };
   ws.onerror = () => {
     hidePreloader();
@@ -442,14 +450,18 @@ function setupDataChannel() {
       sendFile(pendingFileToSend);
       pendingFileToSend = null;
     }
+    // Start P2P ping when DataChannel is open
+    startP2PPing();
   };
   dataChannel.onclose = () => {
     setStatus('Kênh dữ liệu đóng. Thử tạo kết nối lại nếu cần.', 'error');
     stopNetworkMonitoring(); // Stop when channel closes
+    stopP2PPing(); // Stop P2P ping
   };
   dataChannel.onerror = () => {
     setStatus('Lỗi trên kênh dữ liệu. Kiểm tra kết nối.', 'error');
     stopNetworkMonitoring(); // Stop on error
+    stopP2PPing(); // Stop P2P ping
   };
   dataChannel.onmessage = handleDataChannelMessage;
 }
@@ -482,9 +494,28 @@ function handleCandidate(data) {
 
 // Process file metadata and binary chunks from sender
 function handleDataChannelMessage(e) {
-  if (isSender) return;
   if (typeof e.data === 'string') {
     const meta = JSON.parse(e.data);
+
+    // Handle P2P ping/pong
+    if (meta.type === 'p2p-ping') {
+      // Receiver: send pong back
+      if (dataChannel && dataChannel.readyState === 'open') {
+        dataChannel.send(JSON.stringify({ type: 'p2p-pong', pingId: meta.pingId }));
+      }
+      return;
+    } else if (meta.type === 'p2p-pong') {
+      // Sender: calculate RTT
+      const sentTime = p2pPingStats[meta.pingId];
+      if (sentTime) {
+        const rtt = Date.now() - sentTime;
+        delete p2pPingStats[meta.pingId];
+        updateDiagnostics({ p2pPing: rtt });
+      }
+      return;
+    }
+
+    if (isSender) return;
     if (meta.type === 'file-meta') {
       // Check file size BEFORE accepting
       if (meta.size && meta.size > MAX_BUFFER_SIZE) {
@@ -741,8 +772,25 @@ function updateProgress(current = 0, total = 0) {
   }
 }
 
-function updateDiagnostics() {
-  diagnosticsEl.textContent = `Ping: ${networkStats.ping || '-'}ms`;
+function updateDiagnostics(options = {}) {
+  // Update network stats if p2pPing provided
+  if (options.p2pPing != null) {
+    networkStats.p2pPing = options.p2pPing;
+  }
+
+  const serverPing = networkStats.ping;
+  const p2pPing = networkStats.p2pPing;
+
+  // Update Server ping display
+  if (serverPingEl) {
+    serverPingEl.textContent = serverPing != null ? `${serverPing}ms` : '--';
+  }
+
+  // Update P2P ping display
+  if (p2pPingEl) {
+    p2pPingEl.textContent = p2pPing != null ? `${p2pPing}ms` : '--';
+  }
+
   updateConnectionQuality();
 }
 
@@ -867,9 +915,47 @@ function stopNetworkMonitoring() {
     networkTestInterval = null;
   }
   // Reset display
-  if (diagnosticsEl) diagnosticsEl.textContent = '--';
-  if (connectionQualityEl) connectionQualityEl.textContent = 'Đang chờ kết nối...';
+  if (serverPingEl) {
+    serverPingEl.textContent = '--';
+    serverPingEl.classList.remove('excellent', 'good', 'fair', 'poor');
+  }
+  if (p2pPingEl) {
+    p2pPingEl.textContent = '--';
+    p2pPingEl.classList.remove('excellent', 'good', 'fair', 'poor');
+  }
   networkStats = {};
+}
+
+// P2P Ping Functions
+function startP2PPing() {
+  if (p2pPingInterval) return; // Already running
+  p2pPingInterval = setInterval(testP2PPing, 10000); // Every 10s
+  testP2PPing(); // Run immediately
+}
+
+function testP2PPing() {
+  if (!dataChannel || dataChannel.readyState !== 'open') return;
+  // Use nanoid-like random ID to avoid collision + timestamp for uniqueness
+  const pingId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  p2pPingStats[pingId] = Date.now();
+  try {
+    dataChannel.send(JSON.stringify({ type: 'p2p-ping', pingId }));
+  } catch (err) {
+    console.error('P2P ping error:', err);
+  }
+}
+
+function stopP2PPing() {
+  if (p2pPingInterval) {
+    clearInterval(p2pPingInterval);
+    p2pPingInterval = null;
+  }
+  p2pPingStats = {};
+  // Reset P2P ping display
+  if (networkStats.p2pPing != null) {
+    delete networkStats.p2pPing;
+    updateDiagnostics(); // Refresh display
+  }
 }
 
 function setConnectionState(state, info) {
@@ -880,14 +966,25 @@ function setConnectionState(state, info) {
 }
 
 function updateConnectionQuality() {
-  if (!connectionQualityEl) return;
-  const ping = networkStats.ping || null;
-  if (ping == null) {
-    connectionQualityEl.textContent = 'Đang kiểm tra...';
-    return;
+  const serverPing = networkStats.ping;
+  const p2pPing = networkStats.p2pPing;
+
+  // Apply color to Server ping
+  if (serverPingEl && serverPing != null) {
+    serverPingEl.classList.remove('excellent', 'good', 'fair', 'poor');
+    serverPingEl.classList.add(getPingQualityClass(serverPing));
   }
-  let label = 'Tốt';
-  if (ping > 200) label = 'Kém';
-  else if (ping > 100) label = 'Trung bình';
-  connectionQualityEl.textContent = `${label} (${ping}ms)`;
+
+  // Apply color to P2P ping
+  if (p2pPingEl && p2pPing != null) {
+    p2pPingEl.classList.remove('excellent', 'good', 'fair', 'poor');
+    p2pPingEl.classList.add(getPingQualityClass(p2pPing));
+  }
+}
+
+function getPingQualityClass(ping) {
+  if (ping < 50) return 'excellent';
+  if (ping < 100) return 'good';
+  if (ping < 200) return 'fair';
+  return 'poor';
 }

@@ -582,19 +582,24 @@ body {
   color: var(--text-color);
 }
 
-#connection-quality.excellent {
+/* Ping quality colors */
+#server-ping.excellent,
+#p2p-ping.excellent {
   color: var(--success-color) !important;
 }
 
-#connection-quality.good {
+#server-ping.good,
+#p2p-ping.good {
   color: var(--success-color) !important;
 }
 
-#connection-quality.fair {
+#server-ping.fair,
+#p2p-ping.fair {
   color: var(--warning-color) !important;
 }
 
-#connection-quality.poor {
+#server-ping.poor,
+#p2p-ping.poor {
   color: var(--error-color) !important;
 }
 
