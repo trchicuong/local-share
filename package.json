@@ -1,14 +1,12 @@
 {
   "name": "local-share",
   "private": true,
-  "version": "2.0.1",
+  "version": "3.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "build:client": "vite build",
     "start": "node server.js",
-    "server": "node server.js",
     "server:dev": "nodemon server.js",
     "preview": "vite preview"
   },
