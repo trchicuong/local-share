@@ -135,8 +135,12 @@ export function createSafeBlobURL(blob, autoCleanupMs = 300000) {
  * @returns {boolean} - True if file type is allowed
  */
 export function validateFileType(file, allowedTypes = []) {
-  if (!file || !file.type) return false;
+  if (!file) return false;
   if (allowedTypes.length === 0) return true; // No restrictions
+
+  // If file has no type (common with WebRTC transfers), allow it
+  // The filename extension check in preview logic is sufficient
+  if (!file.type || file.type === '') return true;
 
   const fileType = file.type.toLowerCase();
 
