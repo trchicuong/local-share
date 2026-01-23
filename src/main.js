@@ -1471,18 +1471,18 @@ function isStandalone() {
 
 document.addEventListener('DOMContentLoaded', () => {
   renderHistory(); // Render history on page load
+
+  // Show iOS install banner if applicable
+  const isIOS = /iphone|ipad|ipod/i.test(window.navigator.userAgent || '');
+  if (isIOS && iosBanner && !isStandalone()) {
+    iosBanner.classList.remove('hidden');
+  }
+
+  // Hide install prompts if already in standalone mode
   if (isStandalone()) {
-    if (landingPage) landingPage.classList.add('hidden');
-    if (appPage) appPage.classList.remove('hidden');
-    connectWebSocket();
     if (installBtn) installBtn.classList.add('hidden');
     if (installBanner) installBanner.classList.add('hidden');
     if (iosBanner) iosBanner.classList.add('hidden');
-    return;
-  }
-  const isIOS = /iphone|ipad|ipod/i.test(window.navigator.userAgent || '');
-  if (isIOS && iosBanner) {
-    iosBanner.classList.remove('hidden');
   }
 });
 
