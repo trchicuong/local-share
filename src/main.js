@@ -415,18 +415,55 @@ function addPeerToList(id) {
   btn.className = 'send-button button';
   btn.textContent = 'Gửi';
 
+  // Debounce state for this button
+  let isProcessing = false;
+
   // Store handler reference for cleanup
-  const handleSendClick = () => {
+  const handleSendClick = async () => {
     // Prevent concurrent sends
     if (isSendingFile) {
-      alert('Đang gửi file khác, vui lòng đợi!');
+      setStatus('Đang gửi file khác, vui lòng đợi!', 'info');
+      return;
+    }
+
+    // Debounce: prevent rapid clicks
+    if (isProcessing) {
+      setStatus('Đang xử lý yêu cầu, vui lòng đợi...', 'info');
       return;
     }
 
     const f = fileInput && fileInput.files && fileInput.files[0];
-    if (!f) return alert('Vui lòng chọn file trước!');
-    pendingFileToSend = f;
-    connectToPeer(id);
+    if (!f) {
+      setStatus('Vui lòng chọn file trước!', 'error');
+      return;
+    }
+
+    // Validate file
+    if (!f.name || f.size === 0) {
+      setStatus('File không hợp lệ. Vui lòng chọn lại.', 'error');
+      if (fileInput) fileInput.value = '';
+      return;
+    }
+
+    // Disable button and set processing state
+    isProcessing = true;
+    btn.disabled = true;
+    btn.textContent = 'Đang kết nối...';
+
+    try {
+      pendingFileToSend = f;
+      await connectToPeer(id);
+    } catch (err) {
+      console.error('Error connecting to peer:', err);
+      setStatus('Lỗi khi kết nối. Vui lòng thử lại.', 'error');
+    } finally {
+      // Re-enable after delay (debounce)
+      setTimeout(() => {
+        isProcessing = false;
+        btn.disabled = false;
+        btn.textContent = 'Gửi';
+      }, 1500); // 1.5s debounce
+    }
   };
   btn.addEventListener('click', handleSendClick);
   btn._sendHandler = handleSendClick; // Store for later cleanup
@@ -569,7 +606,7 @@ function handleSignalMessage(event) {
   }
 }
 
-function connectToPeer(id) {
+async function connectToPeer(id) {
   connectedPeerId = id;
   isSender = true;
 
@@ -577,52 +614,77 @@ function connectToPeer(id) {
     createPeerConnection();
   }
 
-  // Check if already negotiating
+  // Check if already negotiating with better user feedback
   if (makingOffer) {
-    console.log('Already making offer, ignoring duplicate request');
-    return;
+    console.log('Already making offer, waiting for completion');
+    setStatus('Đang kết nối, vui lòng đợi...', 'info');
+    return Promise.reject(new Error('Already negotiating'));
   }
 
+  // Create data channel before making offer
   dataChannel = peerConnection.createDataChannel('file');
   setupDataChannel();
 
+  setStatus(`Đang kết nối tới thiết bị ${id}...`, 'info');
   makingOffer = true;
-  peerConnection
-    .createOffer()
-    .then((offer) => {
-      if (peerConnection.signalingState !== 'stable') {
-        console.log('Signaling state not stable, aborting offer');
-        makingOffer = false;
-        return;
-      }
-      return peerConnection.setLocalDescription(offer);
-    })
-    .then(() => {
-      if (peerConnection.localDescription) {
-        if (!connectedPeerId) {
-          console.error('Cannot send offer: connectedPeerId is null');
-          setStatus('Lỗi: Không xác định được peer', 'error');
-          return;
-        }
-        safeSendWS({
-          type: 'offer',
-          target: connectedPeerId,
-          offer: peerConnection.localDescription,
-        });
-      }
-    })
-    .catch((err) => {
-      console.error('Error creating offer:', err);
-      setStatus('Lỗi khi tạo offer', 'error');
-    })
-    .finally(() => {
-      makingOffer = false;
+
+  try {
+    const offer = await peerConnection.createOffer();
+    
+    if (peerConnection.signalingState !== 'stable') {
+      console.log('Signaling state not stable, aborting offer');
+      throw new Error('Signaling state not stable');
+    }
+
+    await peerConnection.setLocalDescription(offer);
+
+    if (!connectedPeerId) {
+      console.error('Cannot send offer: connectedPeerId is null');
+      throw new Error('Peer ID is null');
+    }
+
+    safeSendWS({
+      type: 'offer',
+      target: connectedPeerId,
+      offer: peerConnection.localDescription,
     });
 
-  setStatus(`Đang kết nối tới thiết bị ${id}...`, 'info');
+    console.log('Offer sent successfully to', id);
+  } catch (err) {
+    console.error('Error creating/sending offer:', err);
+    setStatus('Lỗi khi kết nối. Vui lòng thử lại.', 'error');
+    throw err;
+  } finally {
+    makingOffer = false;
+  }
 }
 
 function createPeerConnection() {
+  // Close existing connection before creating new one
+  if (peerConnection) {
+    console.log('[WebRTC] Closing existing peer connection before creating new one');
+    try {
+      if (peerConnection.connectionState !== 'closed') {
+        peerConnection.close();
+      }
+    } catch (err) {
+      console.warn('[WebRTC] Error closing old peer connection:', err);
+    }
+    peerConnection = null;
+  }
+
+  // Cleanup old data channel
+  if (dataChannel) {
+    try {
+      if (dataChannel.readyState !== 'closed') {
+        dataChannel.close();
+      }
+    } catch (err) {
+      console.warn('[WebRTC] Error closing old data channel:', err);
+    }
+    dataChannel = null;
+  }
+
   // Reset state for new connection
   pendingIceCandidates = [];
   isSender = false;
@@ -667,6 +729,18 @@ function createPeerConnection() {
       setStatus('Kết nối bị gián đoạn hoặc thất bại.', 'error');
       setConnectionState('disconnected', 'Kết nối đã ngắt');
       stopNetworkMonitoring(); // Stop monitoring when disconnected
+      // Auto cleanup after disconnect
+      setTimeout(() => {
+        if (peerConnection && peerConnection.connectionState === 'disconnected') {
+          console.log('[WebRTC] Auto-cleanup disconnected peer connection');
+          cleanupConnection();
+        }
+      }, 5000); // Wait 5s before cleanup
+    } else if (st === 'failed') {
+      setStatus('Kết nối thất bại. Vui lòng thử lại.', 'error');
+      setConnectionState('disconnected', 'Kết nối thất bại');
+      stopNetworkMonitoring();
+      cleanupConnection(); // Immediate cleanup on failure
     } else if (st === 'closed') {
       setStatus('Kênh kết nối đóng. Để gửi tiếp, chọn file mới và bấm Gửi.', 'error');
       setConnectionState('disconnected', 'Đã đóng');
@@ -1143,16 +1217,44 @@ function showFilePreview(filename, blob) {
   previewOverlay.classList.remove('hidden');
 }
 
+// Function to close preview modal
+function closePreviewModal() {
+  if (!previewOverlay) return;
+  
+  previewOverlay.classList.add('hidden');
+  if (previewContent) previewContent.innerHTML = '';
+  
+  if (currentPreviewUrl) {
+    cleanupManager.blobURLs.revoke(currentPreviewUrl);
+    currentPreviewUrl = null;
+  }
+}
+
+// Close button click handler
 if (previewCloseBtn && previewOverlay) {
-  cleanupManager.listeners.add(previewCloseBtn, 'click', () => {
-    previewOverlay.classList.add('hidden');
-    previewContent.innerHTML = '';
-    if (currentPreviewUrl) {
-      cleanupManager.blobURLs.revoke(currentPreviewUrl);
-      currentPreviewUrl = null;
+  cleanupManager.listeners.add(previewCloseBtn, 'click', (e) => {
+    e.stopPropagation();
+    closePreviewModal();
+  });
+}
+
+// Click outside to close (click on overlay background)
+if (previewOverlay) {
+  cleanupManager.listeners.add(previewOverlay, 'click', (e) => {
+    // Only close if clicking directly on overlay, not on content
+    if (e.target === previewOverlay) {
+      closePreviewModal();
     }
   });
 }
+
+// ESC key to close
+cleanupManager.listeners.add(document, 'keydown', (e) => {
+  if (e.key === 'Escape' && previewOverlay && !previewOverlay.classList.contains('hidden')) {
+    e.preventDefault();
+    closePreviewModal();
+  }
+});
 
 // Send file with chunking and backpressure handling
 function sendFile(fileArg) {
@@ -1203,13 +1305,36 @@ function sendFile(fileArg) {
     return;
   }
 
-  const CHUNK = ENV.CHUNK_SIZE || 64 * 1024;
+  // Dynamic chunk size based on connection quality
+  function calculateChunkSize() {
+    const baseChunk = ENV.CHUNK_SIZE || 64 * 1024; // 64KB default
+    const p2pPing = networkStats.p2pPing;
+    
+    // Adjust chunk size based on latency
+    if (p2pPing < 50) {
+      // Excellent connection: use larger chunks (128KB)
+      return Math.min(128 * 1024, baseChunk * 2);
+    } else if (p2pPing < 100) {
+      // Good connection: use standard chunk size (64KB)
+      return baseChunk;
+    } else if (p2pPing < 300) {
+      // Fair connection: use smaller chunks (32KB)
+      return Math.max(32 * 1024, baseChunk / 2);
+    } else {
+      // Poor connection: use very small chunks (16KB)
+      return Math.max(16 * 1024, baseChunk / 4);
+    }
+  }
+
+  const CHUNK = calculateChunkSize();
+  console.log(`[File Transfer] Using chunk size: ${(CHUNK / 1024).toFixed(0)}KB (P2P ping: ${networkStats.p2pPing || 'N/A'}ms)`);
+  
   let readerOffset = 0;
   const reader = new FileReader();
 
   // Set bufferedAmountLowThreshold to handle backpressure
   try {
-    const chunk = typeof ENV.CHUNK_SIZE === 'number' ? ENV.CHUNK_SIZE : 128 * 1024;
+    const chunk = CHUNK;
     // threshold: min(8 * chunk, 2 MiB)
     const threshold = Math.min(8 * chunk, 2 * 1024 * 1024);
     dataChannel.bufferedAmountLowThreshold = threshold;
@@ -1276,13 +1401,20 @@ function sendFile(fileArg) {
   readNext();
 }
 
+let lastProgressPercent = -1; // Track last progress percentage
+
 function updateProgress(current = 0, total = 0) {
   if (!progressEl) return;
 
   if (total > 0) {
     const percent = Math.floor((current / total) * 100);
-    progressEl.classList.remove('hidden');
-    progressEl.value = percent;
+    
+    // Only update DOM if percentage changed (performance optimization)
+    if (percent !== lastProgressPercent) {
+      progressEl.classList.remove('hidden');
+      progressEl.value = percent;
+      lastProgressPercent = percent;
+    }
 
     // Calculate and display transfer speed
     if (!transferStartTime) {
@@ -1293,7 +1425,7 @@ function updateProgress(current = 0, total = 0) {
     if (elapsed > 0 && current > 0) {
       const now = Date.now();
       // Throttle updates to every 1 second
-      if (now - lastProgressUpdate > 1000) {
+      if (now - lastProgressUpdate > 1000 || percent === 100) {
         lastProgressUpdate = now;
         const speed = current / elapsed; // bytes per second
         const remaining = (total - current) / speed; // seconds remaining
@@ -1309,8 +1441,11 @@ function updateProgress(current = 0, total = 0) {
       }
     }
   } else {
-    progressEl.value = 0;
-    progressEl.classList.add('hidden');
+    if (lastProgressPercent !== -1) {
+      progressEl.value = 0;
+      progressEl.classList.add('hidden');
+      lastProgressPercent = -1;
+    }
     transferStartTime = null; // Reset timer
     lastProgressUpdate = 0;
   }

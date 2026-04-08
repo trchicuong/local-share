@@ -26,12 +26,20 @@ html {
 }
 
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family:
+    'Inter',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
   background-color: var(--background-color);
   color: var(--text-color);
   overflow-x: hidden;
   line-height: 1.5;
-  transition: background-color 0.2s, color 0.2s;
+  transition:
+    background-color 0.2s,
+    color 0.2s;
 }
 
 .vanta-background {
@@ -711,7 +719,9 @@ body {
 .input:focus {
   outline: none;
   border-color: var(--text-color);
-  box-shadow: 0 0 0 2px var(--background-color), 0 0 0 4px var(--text-color);
+  box-shadow:
+    0 0 0 2px var(--background-color),
+    0 0 0 4px var(--text-color);
 }
 
 .modal {
@@ -1114,6 +1124,19 @@ body {
   padding: 8px 12px;
   font-size: 1.25rem;
   line-height: 1;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s ease;
+}
+
+.preview-button.close-btn:hover {
+  background: var(--error-color) !important;
+  border-color: var(--error-color) !important;
+  transform: scale(1.05);
+}
+
+.preview-button.close-btn:active {
+  transform: scale(0.95);
 }
 
 .preview-content {
