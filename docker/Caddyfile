@@ -1,0 +1,17 @@
+{
+  # Enable internal local HTTPS
+  auto_https disable_redirects
+}
+
+:8443 {
+  tls internal
+
+  # Proxy WebSocket and HTTP traffic to LoS container
+  reverse_proxy los:3000 {
+    header_up Host {host}
+    header_up X-Real-IP {remote_host}
+    header_up X-Forwarded-For {remote_host}
+    header_up X-Forwarded-Proto {scheme}
+  }
+}
+

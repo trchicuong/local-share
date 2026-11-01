@@ -1,0 +1,39 @@
+services:
+  los:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: local-share-app
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOST=0.0.0.0
+      - WS_FALLBACK=true
+    networks:
+      - los-net
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: local-share-proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:8443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - los-net
+    depends_on:
+      - los
+
+networks:
+  los-net:
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:
+

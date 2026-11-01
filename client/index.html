@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <title>Local Share (LoS) - Instant file sharing!</title>
+    <meta
+      name="description"
+      content="Instant high-speed cross-platform local file sharing over WebRTC & Wi-Fi."
+    />
+    <meta name="theme-color" content="#000000" />
+
+    <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.json" />
+
+    <link rel="stylesheet" href="/src/styles/base.css" />
+    <link rel="stylesheet" href="/src/styles/radar.css" />
+    <link rel="stylesheet" href="/src/styles/components.css" />
+  </head>
+  <body>
+    <div id="app">
+      <!-- Background Radar Canvas Layer -->
+      <canvas id="radar-canvas" class="canvas-layer"></canvas>
+      <canvas id="beam-canvas" class="canvas-layer"></canvas>
+
+      <!-- App Header -->
+      <header class="app-header">
+        <div class="brand" title="Local Share">
+          <img src="/images/apple-touch-icon.png" alt="Local Share" class="brand-logo" />
+          <span class="brand-title">Local Share</span>
+        </div>
+
+        <div class="header-controls">
+          <button
+            id="btn-public-room"
+            class="icon-btn"
+            title="Join Public Room"
+            aria-label="Join Public Room"
+          >
+            <!-- Injected by main.js -->
+          </button>
+          <button id="btn-pair" class="icon-btn" title="Pair Devices" aria-label="Pair Devices">
+            <!-- Injected by main.js -->
+          </button>
+          <button
+            id="btn-toggle-view"
+            class="icon-btn"
+            title="Toggle Grid / Radar View"
+            aria-label="Toggle View Mode"
+          >
+            <!-- Injected by main.js -->
+          </button>
+          <button id="btn-about" class="icon-btn" title="About" aria-label="About">
+            <!-- Injected by main.js -->
+          </button>
+          <button id="btn-settings" class="icon-btn" title="Settings" aria-label="Settings">
+            <!-- Injected by main.js -->
+          </button>
+          <button
+            id="btn-install"
+            class="icon-btn hidden"
+            title="Install App"
+            aria-label="Install App"
+          >
+            <!-- Injected by main.js -->
+          </button>
+        </div>
+      </header>
+
+      <!-- Hint instructions when peers are found (Placed at top below header/toast matching PairDrop) -->
+      <div id="peers-instructions" class="peers-instructions hidden">
+        <span class="instruction-desktop"
+          >Click to send files or right-click to send a message</span
+        >
+        <span class="instruction-mobile">Tap to send files or tap & hold to send a message</span>
+      </div>
+
+      <!-- Main Viewport -->
+      <main class="main-viewport">
+        <!-- Center Instructions (when waiting for peers) -->
+        <div id="empty-state" class="empty-state">
+          <h2 class="empty-title">Open Local Share on other devices to send files</h2>
+          <div class="empty-desc">
+            Pair devices or enter a public room to be discoverable on other networks
+          </div>
+        </div>
+
+        <!-- Peers Container -->
+        <div id="peers-container" class="peers-view radar-mode"></div>
+
+        <!-- Live Transfer HUD Card -->
+        <div id="transfer-hud-container" class="transfer-hud-container hidden"></div>
+      </main>
+
+      <!-- App Footer / Current Device Profile -->
+      <footer class="app-footer">
+        <div class="my-device-anchor" id="my-device-anchor">
+          <div class="device-avatar-tether" id="my-avatar" title="Click to open settings">
+            <!-- WiFi Tethering SVG injected -->
+          </div>
+
+          <div class="known-as-wrapper" id="name-badge-btn" title="Click to change name">
+            <span class="known-as-label">You are known as:</span>
+            <span class="identity-badge">
+              <span id="my-display-name">Connecting...</span>
+            </span>
+            <svg
+              class="edit-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+            </svg>
+          </div>
+
+          <div class="discovery-panel">
+            <span class="discovery-label">You can be discovered:</span>
+            <div class="discovery-badges">
+              <span class="badge-network" id="my-discovery-scope">on this network</span>
+              <span
+                class="badge-paired hidden"
+                id="my-paired-badge"
+                title="Click to view paired devices"
+                >paired devices</span
+              >
+              <span
+                class="badge-public hidden"
+                id="my-public-room-badge"
+                title="Click to manage public room"
+              ></span>
+            </div>
+          </div>
+        </div>
+      </footer>
+
+      <!-- Modals Container -->
+      <div id="modal-container" class="modal-container hidden"></div>
+
+      <!-- Toast Notifications Container -->
+      <div id="toast-container" class="toast-container"></div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

@@ -1,15 +1,36 @@
+# ==========================================
+# Local Share (LoS) - Production .gitignore
+# ==========================================
+
 # Dependencies
 node_modules/
+.pnpm-store/
+.npm/
 
 # Build outputs
 dist/
+build/
+dev-dist/
 
-# Environment variables (NEVER commit!)
+# Vite caches & build timestamp artifacts
+.vite/
+vite.config.*.timestamp-*
+
+# Environment variables & secrets (NEVER commit!)
 .env
-.env.local
-.env.production
+.env.*
+!.env.example
+!.env.*.example
 
-# Logs
+# SSL Certificates & Private Keys (Local HTTPS / WebRTC testing)
+*.pem
+*.key
+*.crt
+*.pfx
+*.csr
+*.cer
+
+# Logs & Debuggers
 logs/
 *.log
 npm-debug.log*
@@ -17,29 +38,49 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# PM2
+# PM2 Process Manager
 .pm2/
 pm2.log
 
-# OS
-.DS_Store
-Thumbs.db
+# Docker overrides & local volumes
+docker-compose.override.yml
+.docker/
 
-# IDE
-.vscode/
+# Operating System Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# IDE & Editor Files
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
 .idea/
 *.swp
 *.swo
 *~
+*.sublime-project
+*.sublime-workspace
 
-# Backup files
-*.backup
-*.bak
-server.js.backup.*
-
-# Test coverage
+# Test & Code Coverage
 coverage/
+.nyc_output/
 
-# Temporary files
+# Temporary files & Backups
 *.tmp
 tmp/
+temp/
+*.bak
+*.backup
+server.js.backup.*
+
+temp/
+*.bak
+*.backup
+server.js.backup.*

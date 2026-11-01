@@ -1,0 +1,24 @@
+services:
+  los:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: local-share
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOST=0.0.0.0
+      - WS_FALLBACK=true
+      - DEBUG_MODE=false
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
