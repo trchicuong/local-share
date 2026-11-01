@@ -14,7 +14,22 @@ export class PeersView {
 
     this._createHiddenFileInput();
     this._bindEvents();
+
+    const handleResume = () => {
+      this.render();
+      setTimeout(() => this.render(), 100);
+      setTimeout(() => this.render(), 300);
+    };
+
     window.addEventListener('resize', () => this.render());
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) handleResume();
+    });
+    window.addEventListener('pageshow', handleResume);
+    window.addEventListener('focus', handleResume);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', () => this.render());
+    }
   }
 
   _createHiddenFileInput() {

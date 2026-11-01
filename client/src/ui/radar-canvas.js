@@ -3,12 +3,13 @@ import { events } from '../core/events.js';
 /**
  * Radar Canvas Animation Engine
  * Recreates the calm, continuous, gentle wave expansion inspired by PairDrop
+ * Resilient against iOS PWA app-switching, safe-area transitions, and viewport shifts
  */
 export class RadarCanvas {
   constructor(canvasElement, anchorSelector = '#my-avatar') {
     this.canvas = canvasElement;
     this.anchorSelector = anchorSelector;
-    this.ctx = this.canvas.getContext('2d');
+    this.ctx = this.canvas ? this.canvas.getContext('2d') : null;
     this.animationId = null;
     this.isRunning = false;
 
@@ -27,12 +28,35 @@ export class RadarCanvas {
 
     this._onResize = this._onResize.bind(this);
     this._renderFrame = this._renderFrame.bind(this);
+    this._handleAppResume = this._handleAppResume.bind(this);
 
+    // Standard window resize
     window.addEventListener('resize', this._onResize);
+
+    // Mobile visual viewport (catches iOS virtual keyboard, address bar & safe-area changes)
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', () => {
+        this._onResize();
+      });
+      window.visualViewport.addEventListener('scroll', () => {
+        this._updateOrigin();
+      });
+    }
+
+    // App Switcher / PWA Lifecycle: Resync origin & canvas buffers when user returns
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden) this.stop();
-      else this.start();
+      if (document.hidden) {
+        this.stop();
+      } else {
+        this._handleAppResume();
+      }
     });
+    window.addEventListener('pageshow', this._handleAppResume);
+    window.addEventListener('focus', this._handleAppResume);
+
+    if (this.canvas) {
+      this.canvas.addEventListener('contextrestored', () => this._onResize());
+    }
 
     // Reactive origin tracking for dynamic badge wrapping and language changes
     events.on('radar-refresh', () => this._updateOrigin());
@@ -56,22 +80,49 @@ export class RadarCanvas {
     setTimeout(() => this._onResize(), 60);
   }
 
+  _handleAppResume() {
+    this._onResize();
+    this._updateOrigin();
+    this.start();
+
+    // In iOS PWA standalone mode, safe-area-inset and WebKit layout take 80-300ms to stabilize
+    setTimeout(() => {
+      this._onResize();
+      this._updateOrigin();
+    }, 80);
+    setTimeout(() => {
+      this._onResize();
+      this._updateOrigin();
+    }, 250);
+    setTimeout(() => {
+      this._onResize();
+      this._updateOrigin();
+    }, 500);
+  }
+
   _updateOrigin() {
+    if (!this.canvas) return;
     const anchor = document.querySelector(this.anchorSelector);
     if (anchor) {
       const rect = anchor.getBoundingClientRect();
       const canvasRect = this.canvas.getBoundingClientRect();
-      const newX0 = Math.round(rect.left + rect.width / 2 - canvasRect.left);
-      const newY0 = Math.round(rect.top + rect.height / 2 - canvasRect.top);
-      this.anchorRadius = Math.round(rect.width / 2) || 34;
+      if (rect.width > 0 && rect.height > 0) {
+        const newX0 = Math.round(rect.left + rect.width / 2 - canvasRect.left);
+        const newY0 = Math.round(rect.top + rect.height / 2 - canvasRect.top);
+        this.anchorRadius = Math.round(rect.width / 2) || 34;
 
-      if (newX0 !== this.x0 || newY0 !== this.y0) {
-        this.x0 = newX0;
-        this.y0 = newY0;
-        this._updateGeometry();
-        events.emit('radar-origin-updated', { x: this.x0, y: this.y0 });
+        if (newX0 !== this.x0 || newY0 !== this.y0) {
+          this.x0 = newX0;
+          this.y0 = newY0;
+          this._updateGeometry();
+          events.emit('radar-origin-updated', { x: this.x0, y: this.y0 });
+        }
+        return;
       }
-    } else {
+    }
+
+    // Fallback if anchor is momentarily detached or unrendered
+    if (this.w > 0 && this.h > 0) {
       this.x0 = Math.round(this.w / 2);
       this.y0 = Math.round(this.h - 90);
       this.anchorRadius = 34;
@@ -89,6 +140,7 @@ export class RadarCanvas {
   }
 
   _onResize() {
+    if (!this.canvas || !this.ctx) return;
     const dpr = window.devicePixelRatio || 1;
     this.w = this.canvas.clientWidth;
     this.h = this.canvas.clientHeight;
@@ -101,7 +153,7 @@ export class RadarCanvas {
     this.ctx.scale(dpr, dpr);
 
     // Spacing between concentric rings: scale smoothly across mobile and desktop
-    // Matching PairDrop algorithm: dw = Math.round(Math.max(0.6 * w, h) / 8)
+    // dw = Math.round(Math.max(0.6 * w, h) / 8)
     const scaleDim = Math.max(0.6 * this.w, this.h);
     this.dw = Math.round(scaleDim / 8);
     this.dw = Math.max(64, Math.min(135, this.dw));
@@ -158,14 +210,18 @@ export class RadarCanvas {
   _renderFrame(timestamp) {
     if (!this.isRunning) return;
 
+    // Instantly catch any viewport / safe-area layout shift without waiting for resize event
+    if (this.canvas.clientWidth !== this.w || this.canvas.clientHeight !== this.h) {
+      this._onResize();
+    }
+
     this.frameCount++;
-    // Periodically verify origin every 15 frames (~4 times a second)
-    if (this.x0 === 0 || this.frameCount % 15 === 0) {
+    // Continuously verify anchor origin every 6 frames (~10 times a second)
+    if (this.x0 === 0 || this.frameCount % 6 === 0) {
       this._updateOrigin();
     }
 
     const elapsed = (timestamp - this.startTime) / 1000;
-    // Infinitely smooth modulo: cycles 0..1 without any jump
     const progress = (elapsed * this.speed) % 1;
 
     this.drawFrame(progress);

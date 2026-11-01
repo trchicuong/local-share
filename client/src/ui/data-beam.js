@@ -18,6 +18,24 @@ export class DataBeam {
     this._render = this._render.bind(this);
     this._onResize = this._onResize.bind(this);
     window.addEventListener('resize', this._onResize);
+
+    const resync = () => {
+      this._onResize();
+      setTimeout(() => this._onResize(), 100);
+      setTimeout(() => this._onResize(), 300);
+    };
+
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', () => this._onResize());
+      window.visualViewport.addEventListener('scroll', () => this._onResize());
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) resync();
+    });
+    window.addEventListener('pageshow', resync);
+    window.addEventListener('focus', resync);
+
     this._onResize();
   }
 
@@ -97,6 +115,10 @@ export class DataBeam {
     if (!this.active || !this.canvas || !this.ctx) {
       this.animationFrameId = null;
       return;
+    }
+
+    if (this.canvas.clientWidth !== this.w || this.canvas.clientHeight !== this.h) {
+      this._onResize();
     }
 
     const w = this.canvas.clientWidth;
