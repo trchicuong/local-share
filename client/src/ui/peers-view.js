@@ -271,7 +271,7 @@ export class PeersView {
 
     const iconSvg = getDeviceIcon(peer.name?.deviceType);
 
-    // Build room status indicator bars (PairDrop-style colored lines)
+    // Build room status indicator bars (colored lines per discovery scope)
     const rooms = Array.isArray(peer.rooms) && peer.rooms.length > 0
       ? peer.rooms
       : [peer.roomType || 'ip'];
@@ -320,7 +320,7 @@ export class PeersView {
       events.emit('open-text-modal', peer);
     });
 
-    // Touch long-press support for mobile (PairDrop standard)
+    // Touch long-press support for mobile devices
     let touchTimer = null;
     let touchMoved = false;
 

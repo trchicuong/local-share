@@ -22,7 +22,7 @@ export const storage = {
     else localStorage.removeItem(STORAGE_KEYS.DISPLAY_NAME);
   },
 
-  // --- Paired Devices Management (PairDrop-grade) ---
+  // --- Paired Devices Management ---
   getPairedDevices() {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.PAIRED_DEVICES);

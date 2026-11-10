@@ -135,7 +135,7 @@ export class FilePreviewModal {
       ? t('preview.filesReceivedPlural', { count: files.length })
       : t('preview.filesReceivedSingle');
 
-    // Build shareable files for Web Share API (PairDrop Mobile approach)
+    // Build shareable files for Web Share API on mobile devices
     let canShare = false;
     if (isMobile && typeof navigator.share === 'function') {
       try {

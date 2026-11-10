@@ -2,7 +2,7 @@ import { events } from '../core/events.js';
 
 /**
  * Radar Canvas Animation Engine
- * Recreates the calm, continuous, gentle wave expansion inspired by PairDrop
+ * Continuous, calm concentric wave expansion from the local device anchor
  * Resilient against iOS PWA app-switching, safe-area transitions, and viewport shifts
  */
 export class RadarCanvas {
@@ -13,7 +13,7 @@ export class RadarCanvas {
     this.animationId = null;
     this.isRunning = false;
 
-    // Visual configuration: gentle, subtle, calm (PairDrop-grade)
+    // Visual configuration: gentle, subtle, calm
     this.baseOpacity = 0.32;
     this.speed = 0.16; // Meditative speed (~6.2 seconds per wave cycle)
     this.ringsCount = 8;

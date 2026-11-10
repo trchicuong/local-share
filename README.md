@@ -109,6 +109,12 @@ _Lưu ý về cổng:_ Hệ thống sử dụng cổng `3000` (hoặc cổng `80
 
 ---
 
+## Credits
+
+- Tham khảo & ý tưởng của [PairDrop](https://github.com/schlagmichdoch/PairDrop).
+
+---
+
 ## Đóng góp
 
 Dự án này luôn chào đón các đóng góp! Nếu bạn muốn sửa lỗi, thêm tính năng mới, hoặc cải thiện mã nguồn, hãy thoải mái tạo một `Pull Request`.

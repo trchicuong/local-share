@@ -1,5 +1,5 @@
 /**
- * Segmented Code / PIN Input Component (PairDrop-grade)
+ * Segmented Code / PIN Input Component
  * Supports auto-focus advance, backspace navigation, arrow keys, and multi-character paste
  */
 export class SegmentedInput {

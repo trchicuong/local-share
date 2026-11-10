@@ -126,7 +126,7 @@
    ========================================================= */
 .transfer-hud-container {
   position: absolute;
-  top: 68px;
+  top: 44px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 35;
@@ -374,7 +374,7 @@
 }
 
 /* =========================================================
-   Segmented Code & PIN Input (PairDrop-grade Individual Cells)
+   Segmented Code & PIN Input (Individual Cells)
    ========================================================= */
 .segmented-code-container {
   display: flex;
@@ -666,7 +666,7 @@ textarea:focus, input:focus {
 }
 
 /* =========================================================
-   Post-Receive File Preview Modal (PairDrop-grade)
+   Post-Receive File Preview Modal
    ========================================================= */
 .preview-card {
   width: 95%;
@@ -951,7 +951,7 @@ textarea:focus, input:focus {
 }
 
 /* =========================================================
-   Paired Devices Manager Modal (PairDrop-grade)
+   Paired Devices Manager Modal
    ========================================================= */
 .paired-manager-card {
   width: 94%;
@@ -1241,7 +1241,7 @@ textarea:focus, input:focus {
 }
 
 /* =========================================================
-   Modern iOS/PairDrop-style Switch Toggle
+   Modern Switch Toggle
    ========================================================= */
 .switch-toggle {
   position: relative;
@@ -1323,7 +1323,7 @@ textarea:focus, input:focus {
 }
 
 /* =========================================================
-   About Dialog (Inspired by PairDrop minimalist theme)
+   About Dialog (Minimalist Theme)
    ========================================================= */
 .about-card {
   max-width: 420px;
