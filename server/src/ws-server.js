@@ -268,12 +268,18 @@ export default class LoSWsServer {
       case 'join-public-room':
         if (typeof message.roomId === 'string' && message.roomId.trim()) {
           const cleanRoomId = message.roomId.trim().toUpperCase().substring(0, 10);
+          let prevPeers = [];
+          if (sender.publicRoomId && sender.publicRoomId !== cleanRoomId) {
+            const left = this.roomManager.leavePublicRoom(sender);
+            prevPeers = left.otherPeers || [];
+          }
           const { otherPeers } = this.roomManager.joinPublicRoom(sender, cleanRoomId);
           this._send(sender, {
             type: 'public-room-joined',
             roomId: cleanRoomId,
           });
-          for (const other of otherPeers) {
+          const affectedPeers = new Set([...prevPeers, ...otherPeers]);
+          for (const other of affectedPeers) {
             this._sendVisiblePeers(other);
           }
           this._sendVisiblePeers(sender);

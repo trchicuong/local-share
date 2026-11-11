@@ -5,7 +5,8 @@ import { FileStreamReader } from './stream-reader.js';
 import { FileStreamWriter } from './stream-writer.js';
 import { noSleep } from '../utils/nosleep.js';
 import { storage } from '../utils/storage.js';
-import { getMimeType, isMobileDevice } from '../utils/mime.js';
+import { getMimeType } from '../utils/mime.js';
+import { t } from '../utils/i18n.js';
 
 export class TransferManager {
   constructor() {
@@ -26,12 +27,30 @@ export class TransferManager {
     events.on('relay-request', (msg) => this._onTransferRequest(msg.sender, msg));
     events.on('relay-files-transfer-response', (msg) => this._onTransferResponse(msg, true));
     events.on('relay-header', (msg) => this._onTransferHeader(msg.sender, msg, true));
+    events.on('relay-partition', (msg) => this._onPartitionBoundary(msg, true));
     events.on('relay-partition-received', (msg) => this._onPartitionAck(msg));
     events.on('relay-file-transfer-complete', (msg) => this._onRemoteTransferComplete(msg));
     events.on('relay-transfer-cancel', (msg) => this._onRemoteTransferCancel(msg));
     events.on('relay-ws-chunk', (msg) => this._onWsChunkReceived(msg));
     events.on('relay-text', (msg) => {
       events.emit('text-received', msg.sender, msg.text);
+    });
+
+    // Broadcast self display name updates over open P2P channels for sub-5ms real-time sync
+    events.on('self-identity', (identity) => {
+      if (!identity?.displayName || !signaling.selfId) return;
+      const updateMsg = {
+        type: 'peer-updated',
+        peer: {
+          id: signaling.selfId,
+          name: { displayName: identity.displayName },
+        },
+      };
+      for (const [, conn] of this.connections) {
+        if (conn.dc && conn.dc.readyState === 'open') {
+          conn.sendJSON(updateMsg);
+        }
+      }
     });
 
     // Cleanup on peer leave
@@ -134,6 +153,10 @@ export class TransferManager {
         this._onTransferHeader({ id: peerId }, msg);
         break;
 
+      case 'partition':
+        this._onPartitionBoundary(msg, false);
+        break;
+
       case 'partition-received':
         this._onPartitionAck(msg);
         break;
@@ -144,6 +167,12 @@ export class TransferManager {
 
       case 'transfer-cancel':
         this._onRemoteTransferCancel(msg);
+        break;
+
+      case 'peer-updated':
+        if (msg.peer) {
+          events.emit('peer-updated', msg.peer);
+        }
         break;
 
       case 'text':
@@ -191,21 +220,28 @@ export class TransferManager {
     const HIGH_WATER_MARK = 512 * 1024; // 512 KB
     const LOW_WATER_MARK = 256 * 1024; // 256 KB
     let waited = 0;
-    const maxWaitMs = 5000;
+    const maxWaitMs = 3500;
 
     if (useRelay) {
-      if (signaling.bufferedAmount <= HIGH_WATER_MARK) return;
+      if (signaling.bufferedAmount <= HIGH_WATER_MARK) return true;
       while (signaling.bufferedAmount > LOW_WATER_MARK && waited < maxWaitMs) {
         await new Promise((r) => setTimeout(r, 15));
         waited += 15;
       }
+      return true;
     } else if (conn && conn.dc && conn.dc.readyState === 'open') {
-      if (conn.bufferedAmount <= HIGH_WATER_MARK) return;
+      const initialBuffered = conn.bufferedAmount;
+      if (initialBuffered <= HIGH_WATER_MARK) return true;
       while (conn.dc && conn.dc.readyState === 'open' && conn.bufferedAmount > LOW_WATER_MARK && waited < maxWaitMs) {
         await new Promise((r) => setTimeout(r, 15));
         waited += 15;
       }
+      if (!conn.dc || conn.dc.readyState !== 'open' || conn.bufferedAmount >= initialBuffered) {
+        return false; // WebRTC SCTP buffer stalled
+      }
+      return true;
     }
+    return false;
   }
 
   // --- Sending Flow ---
@@ -213,6 +249,12 @@ export class TransferManager {
     const fileArray = Array.from(files || []);
     if (fileArray.length === 0) return;
     const firstFile = fileArray[0];
+
+    if (this.activeTransfer) {
+      if (this.activeTransfer.reader) this.activeTransfer.reader.abort();
+      if (this.activeTransfer.writer) this.activeTransfer.writer.abort();
+      this._endActiveTransfer();
+    }
 
     noSleep.enable();
 
@@ -236,13 +278,14 @@ export class TransferManager {
       lastBytesTransferred: 0,
       reader: null,
       useRelay: !isWebRTCOpen,
+      partitionAckTimer: null,
     };
     this.activeTransfer = session;
 
     // Send transfer request
     const requestMsg = {
       type: 'request',
-      senderName: signaling.selfName || 'Nearby Peer',
+      senderName: signaling.selfName || t('peers.nearbyPeer'),
       filesCount: fileArray.length,
       firstFileName: firstFile.name,
       files: fileArray.map((f) => ({ name: f.name, size: f.size, mime: getMimeType(f.name, f.type) })),
@@ -289,6 +332,8 @@ export class TransferManager {
     const session = this.activeTransfer;
     if (!session || session.type !== 'send') return;
 
+    this._clearPartitionAckWatchdog(session);
+
     if (!session.filesQueue || session.filesQueue.length === 0) {
       // All files sent and acknowledged
       events.emit('transfer-progress', {
@@ -304,17 +349,29 @@ export class TransferManager {
 
     const file = session.filesQueue.shift();
     session.currentFile = file;
+    this._streamCurrentFile(session, false);
+  }
 
+  _streamCurrentFile(session, isRetry = false) {
+    if (!session || this.activeTransfer !== session || !session.currentFile) return;
+
+    this._clearPartitionAckWatchdog(session);
+    if (session.reader) {
+      session.reader.abort();
+      session.reader = null;
+    }
+
+    const file = session.currentFile;
     const conn = this.connections.get(session.recipientId);
     const isWebRTCOpen = Boolean(conn && conn.dc && conn.dc.readyState === 'open');
-    if (!isWebRTCOpen) {
+    if (!isWebRTCOpen || isRetry) {
       session.useRelay = true;
     }
 
     const fileIndex = session.files.length - session.filesQueue.length - 1;
     const mime = getMimeType(file.name, file.type);
 
-    // Send Header
+    // Send Header (if retrying over relay after mid-file P2P drop, receiver resets partial writer for this file)
     const headerMsg = {
       type: 'header',
       name: file.name,
@@ -322,6 +379,7 @@ export class TransferManager {
       mime: mime,
       fileIndex: fileIndex,
       filesCount: session.filesCount,
+      reset: isRetry,
     };
 
     const headerUsedRelay = this._sendControl(session.recipientId, 'header', headerMsg, session.useRelay);
@@ -333,22 +391,30 @@ export class TransferManager {
       onChunk: async (chunk) => {
         if (this.activeTransfer !== session) return;
 
-        await this._waitForBufferDrain(conn, session.useRelay);
+        const drainOk = await this._waitForBufferDrain(conn, session.useRelay);
         if (this.activeTransfer !== session) return;
+
+        if (!session.useRelay && !drainOk) {
+          console.warn('[WebRTC DataChannel buffer stalled, restarting current file via WebSocket Relay]');
+          this._streamCurrentFile(session, true);
+          return;
+        }
 
         if (session.useRelay) {
           this._sendChunkViaRelay(session.recipientId, chunk);
         } else {
           const sentOk = conn ? conn.send(chunk) : false;
           if (!sentOk) {
-            console.warn('[WebRTC DataChannel send failed, switching to WebSocket Relay]');
-            session.useRelay = true;
-            this._sendChunkViaRelay(session.recipientId, chunk);
+            console.warn('[WebRTC DataChannel send failed, restarting current file via WebSocket Relay]');
+            this._streamCurrentFile(session, true);
+            return;
           }
         }
       },
-      onPartitionEnd: () => {
-        // Paused waiting for partition ACK from receiver
+      onPartitionEnd: (partitionIndex, offset) => {
+        // Notify receiver of partition boundary and start safety watchdog for ACK
+        this._sendControl(session.recipientId, 'partition', { type: 'partition', offset }, session.useRelay);
+        this._schedulePartitionAckWatchdog(session, offset);
       },
       onProgress: (offset) => {
         const currentBatchBytes = (session.totalBytesSent || 0) + offset;
@@ -356,9 +422,11 @@ export class TransferManager {
       },
       onComplete: () => {
         // File chunks pushed to channel. Wait for receiver ACK (file-transfer-complete) before sending next file!
+        this._clearPartitionAckWatchdog(session);
         session.reader = null;
       },
       onError: (err) => {
+        this._clearPartitionAckWatchdog(session);
         this._sendControl(session.recipientId, 'transfer-cancel', { type: 'transfer-cancel' }, session.useRelay);
         events.emit('transfer-error', err);
         this._endActiveTransfer();
@@ -368,8 +436,42 @@ export class TransferManager {
     session.reader.start();
   }
 
+  _schedulePartitionAckWatchdog(session, offset) {
+    this._clearPartitionAckWatchdog(session);
+    session.partitionAckTimer = setTimeout(() => {
+      if (this.activeTransfer !== session || !session.reader || !session.reader.isPaused) return;
+      // Re-send partition boundary over relay in case ACK or boundary was delayed
+      signaling.sendRelay('partition', session.recipientId, { type: 'partition', offset });
+      this._schedulePartitionAckWatchdog(session, offset);
+    }, 3500);
+  }
+
+  _clearPartitionAckWatchdog(session) {
+    if (session && session.partitionAckTimer) {
+      clearTimeout(session.partitionAckTimer);
+      session.partitionAckTimer = null;
+    }
+  }
+
+  _onPartitionBoundary(msg, fromRelay = false) {
+    const session = this.activeTransfer;
+    if (!session || session.type !== 'receive') return;
+    if (fromRelay) {
+      session.useRelay = true;
+    }
+    if (session.writer && session.writer.bytesSinceLastAck > 0 && !session.writer.finalized) {
+      session.writer.bytesSinceLastAck = 0;
+      const ackMsg = { type: 'partition-received', offset: session.writer.receivedBytes };
+      const ackUsedRelay = this._sendControl(session.senderId, 'partition-received', ackMsg, session.useRelay);
+      if (ackUsedRelay) {
+        session.useRelay = true;
+      }
+    }
+  }
+
   _onPartitionAck(msg) {
     if (!this.activeTransfer || this.activeTransfer.type !== 'send') return;
+    this._clearPartitionAckWatchdog(this.activeTransfer);
     if (this.activeTransfer.reader) {
       this.activeTransfer.reader.nextPartition();
     }
@@ -378,6 +480,8 @@ export class TransferManager {
   _onRemoteTransferComplete(msg) {
     const session = this.activeTransfer;
     if (!session || session.type !== 'send') return;
+
+    this._clearPartitionAckWatchdog(session);
 
     if (session.currentFile) {
       session.totalBytesSent = (session.totalBytesSent || 0) + session.currentFile.size;
@@ -401,8 +505,9 @@ export class TransferManager {
   }
 
   _completeSending() {
+    const filesCount = this.activeTransfer?.filesCount || 1;
     noSleep.disable();
-    events.emit('transfer-completed', { type: 'send' });
+    events.emit('transfer-completed', { type: 'send', filesCount });
     this._endActiveTransfer();
   }
 
@@ -411,7 +516,8 @@ export class TransferManager {
     noSleep.enable();
 
     const senderId = sender?.id || msg?.sender?.id || msg?.from;
-    const senderDisplayName = msg?.senderName || sender?.name?.displayName || msg?.sender?.name?.displayName || 'Nearby Peer';
+    const senderDisplayName =
+      msg?.senderName || sender?.name?.displayName || msg?.sender?.name?.displayName || t('peers.nearbyPeer');
 
     // Check if Auto-Accept is enabled for this paired device
     let isAutoAccept = false;
@@ -428,8 +534,8 @@ export class TransferManager {
 
     if (isAutoAccept) {
       events.emit('notify', {
-        title: 'Auto-Accepting Transfer',
-        message: `Receiving "${msg.firstFileName}" from ${senderDisplayName}...`,
+        title: t('toast.autoAccepting'),
+        message: t('toast.autoAcceptingDesc', { file: msg.firstFileName, sender: senderDisplayName }),
         type: 'info',
         duration: 3000,
       });
@@ -456,12 +562,12 @@ export class TransferManager {
   async acceptTransfer(senderId, msg, fileHandle = null, senderName = '') {
     const conn = this.connections.get(senderId);
     const isWebRTCOpen = Boolean(conn && conn.dc && conn.dc.readyState === 'open');
-    const useRelay = Boolean(msg?.useRelay || !isWebRTCOpen);
+    const useRelay = !isWebRTCOpen;
 
     const session = {
       type: 'receive',
       senderId: senderId,
-      senderName: senderName || 'Nearby Peer',
+      senderName: senderName || t('peers.nearbyPeer'),
       filesCount: msg.filesCount || 1,
       filesReceived: [],
       totalSize: msg.totalSize,
@@ -512,6 +618,12 @@ export class TransferManager {
     const session = this.activeTransfer;
     if (fromRelay) {
       session.useRelay = true;
+    }
+
+    // If restarting current file after mid-file P2P fallback, abort incomplete partial writer and clear stale pending chunks
+    if (session.writer && !session.writer.finalized) {
+      session.writer.abort();
+      session.pendingChunks = [];
     }
 
     // Ensure session.writer is null while new writer initializes so incoming chunks queue into pendingChunks

@@ -1,6 +1,6 @@
 import { transferManager } from '../../core/transfer-manager.js';
 import { events } from '../../core/events.js';
-import { t, getLanguage } from '../../utils/i18n.js';
+import { t } from '../../utils/i18n.js';
 
 export class TextModal {
   constructor(modalElement) {
@@ -9,11 +9,20 @@ export class TextModal {
 
     events.on('open-text-modal', (peer) => this.open(peer));
     events.on('text-received', (sender, text) => this.showReceivedText(sender, text));
+    events.on('peer-updated', (peer) => {
+      if (this.targetPeer && this.targetPeer.id === peer.id && !this.modal.classList.contains('hidden')) {
+        this.targetPeer = { ...this.targetPeer, ...peer };
+        const headerEl = this.modal.querySelector('.modal-header h3');
+        if (headerEl) {
+          headerEl.textContent = t('message.title', { name: this.targetPeer.name?.displayName || t('pair.deviceFallback') });
+        }
+      }
+    });
   }
 
   open(peer) {
     this.targetPeer = peer;
-    const peerName = peer.name?.displayName || 'Device';
+    const peerName = peer.name?.displayName || t('pair.deviceFallback');
     this.modal.classList.remove('hidden');
     this.modal.innerHTML = `
       <div class="modal-backdrop"></div>
@@ -39,11 +48,12 @@ export class TextModal {
     document.getElementById('text-send')?.addEventListener('click', () => {
       const text = document.getElementById('text-input')?.value?.trim();
       if (text && this.targetPeer) {
+        const recipientName = this.targetPeer.name?.displayName || t('peers.nearbyDevice');
         transferManager.sendText(this.targetPeer.id, text);
         this.close();
         events.emit('notify', {
           title: t('message.send'),
-          message: `${this.targetPeer.name?.displayName}`,
+          message: t('toast.messageSent', { name: recipientName }),
           type: 'success',
         });
       }
@@ -53,20 +63,20 @@ export class TextModal {
   }
 
   showReceivedText(sender, text) {
-    const senderName = sender.name?.displayName || 'Nearby Device';
+    const senderName = sender.name?.displayName || t('peers.nearbyDevice');
     this.modal.classList.remove('hidden');
     this.modal.innerHTML = `
       <div class="modal-backdrop"></div>
       <div class="modal-card glass-panel">
         <div class="modal-header">
-          <h3>${getLanguage() === 'vi' ? `Tin nhắn từ ${senderName}` : `Message from ${senderName}`}</h3>
+          <h3>${t('message.receivedFrom', { name: senderName })}</h3>
           <button class="modal-close-btn" id="text-modal-close">&times;</button>
         </div>
         <div class="modal-body">
           <textarea class="received-textarea" readonly rows="6">${text}</textarea>
           <div class="modal-actions">
             <button class="btn btn-secondary" id="text-close-btn">${t('preview.close')}</button>
-            <button class="btn btn-primary" id="text-copy-btn">${getLanguage() === 'vi' ? 'Sao chép tin nhắn' : 'Copy Message'}</button>
+            <button class="btn btn-primary" id="text-copy-btn">${t('message.copy')}</button>
           </div>
         </div>
       </div>
@@ -80,7 +90,7 @@ export class TextModal {
       if (navigator.clipboard) {
         navigator.clipboard.writeText(text).then(() => {
           events.emit('notify', {
-            title: getLanguage() === 'vi' ? 'Đã sao chép' : 'Copied',
+            title: t('message.copiedTitle'),
             message: t('message.copied'),
             type: 'success',
           });

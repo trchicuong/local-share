@@ -26,11 +26,22 @@ export const TRANSLATIONS = {
     // Footer
     'footer.youAreKnownAs': 'You are known as:',
     'footer.editName': 'Click to edit display name',
+    'footer.openSettings': 'Click to open settings',
+    'footer.connecting': 'Connecting...',
     'footer.youCanBeDiscovered': 'You can be discovered:',
     'footer.onThisNetwork': 'on this network',
     'footer.pairedDeviceSingle': '1 paired device',
     'footer.pairedDevicePlural': '{count} paired devices',
+    'footer.pairedTooltip': 'Connected to {count} paired device(s). Click to manage.',
     'footer.inRoom': 'in room {room}',
+    'footer.inRoomTooltip': 'Visible in room {room}. Click to manage or leave.',
+    'footer.createdWith': 'Created with',
+    'footer.by': 'by',
+
+    // Peers View
+    'peers.nearbyDevice': 'Nearby Device',
+    'peers.nearbyPeer': 'Nearby Peer',
+    'peers.ready': 'Ready',
 
     // Badges & Status
     'badges.paired': 'Paired',
@@ -45,7 +56,7 @@ export const TRANSLATIONS = {
     'settings.namePlaceholder': 'Enter your nickname',
     'settings.saveName': 'Save',
     'settings.nameSaved': 'Display name updated',
-    'settings.language': 'LANGUAGE / NGON NGU',
+    'settings.language': 'LANGUAGE / NGÔN NGỮ',
     'settings.radarView': 'Radar View',
     'settings.gridView': 'Grid View',
     'settings.preferences': 'PREFERENCES',
@@ -54,10 +65,15 @@ export const TRANSLATIONS = {
     'settings.autoDownload': 'Auto-Download Files',
     'settings.autoDownloadDesc':
       'Automatically download files upon transfer completion without prompting',
+    'settings.managePairs': 'Manage...',
+    'settings.unpairAll': 'Unpair All',
     'settings.close': 'Close',
 
     // Pair Modal
     'pair.title': 'Pair New Device',
+    'pair.tabMyCode': 'My Pair Code',
+    'pair.tabEnterCode': 'Enter Code',
+    'pair.deviceFallback': 'Device',
     'pair.subtitle':
       'Link devices permanently to discover each other across different Wi-Fi or cellular networks.',
     'pair.enterPinTitle': 'Enter 6-Digit PIN from another device',
@@ -89,15 +105,29 @@ export const TRANSLATIONS = {
     'public.subtitle':
       'Devices in the same public room can discover and share files with each other regardless of network.',
     'public.currentRoom': 'Currently in Room: {room}',
+    'public.currentRoomLabel': 'Currently in Room:',
     'public.leaveRoom': 'Leave Room',
     'public.enterRoomId': 'Enter 5-character Room Code',
     'public.joinRoom': 'Join Room',
+    'public.switchRoomPrompt': 'Or switch to another room:',
+    'public.switchRoomBtn': 'Switch Room',
     'public.orShare': 'Or share this room link with others:',
     'public.copyLink': 'Copy Room Link',
     'public.linkCopied': 'Room link copied to clipboard!',
     'public.joinedSuccess': 'Joined room {room}',
     'public.leftSuccess': 'Left public room',
     'public.close': 'Close',
+
+    // Receive Modal
+    'receive.titleSingle': 'Incoming File Transfer',
+    'receive.titleMulti': 'Incoming Transfer ({count} Files)',
+    'receive.otherFiles': 'other files',
+    'receive.nearbyPeer': 'A nearby peer',
+    'receive.wantsToSend': 'wants to send you:',
+    'receive.directStreamTip': 'Direct disk stream supported (Zero-RAM usage)',
+    'receive.decline': 'Decline',
+    'receive.saveLocation': 'Save Location...',
+    'receive.accept': 'Accept Transfer',
 
     // File Preview Modal
     'preview.filesReceivedSingle': 'File Received',
@@ -129,14 +159,20 @@ export const TRANSLATIONS = {
 
     // Send Message Modal
     'message.title': 'Send Message to {name}',
+    'message.receivedFrom': 'Message from {name}',
     'message.placeholder': 'Type your message here...',
     'message.send': 'Send',
     'message.cancel': 'Cancel',
+    'message.copy': 'Copy Message',
+    'message.copiedTitle': 'Copied',
     'message.copied': 'Message copied to clipboard!',
 
     // Transfer HUD
     'hud.sending': 'Sending',
     'hud.receiving': 'Receiving',
+    'hud.moreFiles': 'more',
+    'hud.almostDone': 'Almost done',
+    'hud.cancelTransfer': 'Cancel Transfer',
     'hud.completed': 'Transfer Completed',
     'hud.cancelled': 'Transfer Cancelled',
     'hud.error': 'Transfer Failed',
@@ -145,7 +181,23 @@ export const TRANSLATIONS = {
     'toast.fileSent': 'File sent successfully',
     'toast.filesSent': '{count} files sent successfully',
     'toast.fileReceived': 'File received successfully',
+    'toast.filesReceived': '{count} files received successfully',
+    'toast.messageSent': 'Message sent to {name}',
     'toast.transferStarted': 'Transfer started...',
+    'toast.autoAccepting': 'Auto-Accepting Transfer',
+    'toast.autoAcceptingDesc': 'Receiving "{file}" from {sender}...',
+    'toast.autoAcceptEnabled': 'Auto-Accept enabled for this device.',
+    'toast.autoAcceptDisabled': 'Auto-Accept disabled for this device.',
+    'toast.autoDownloadEnabled': 'Auto-Download Enabled',
+    'toast.autoDownloadDisabled': 'Auto-Download Disabled',
+    'toast.autoDownloadEnabledDesc': 'Files will download automatically after transfer.',
+    'toast.autoDownloadDisabledDesc': 'Files will await manual review in the preview dialog.',
+    'toast.clearedPairsTitle': 'Unpaired All',
+    'toast.clearedPairsDesc': 'Cleared all paired devices.',
+    'toast.transferDeclined': 'Transfer Declined',
+    'toast.declinedByRecipient': 'Declined by recipient',
+    'toast.transferError': 'Transfer Error',
+    'toast.connectionLost': 'Connection interrupted or file unreadable',
     'toast.gridViewActive': 'Grid View Active',
     'toast.radarViewActive': 'Radar View Active',
     'toast.pairing': 'Pairing Device...',
@@ -183,11 +235,22 @@ export const TRANSLATIONS = {
     // Footer
     'footer.youAreKnownAs': 'Tên của bạn là:',
     'footer.editName': 'Bấm để đổi tên hiển thị',
+    'footer.openSettings': 'Bấm để mở cài đặt',
+    'footer.connecting': 'Đang kết nối...',
     'footer.youCanBeDiscovered': 'Có thể tìm thấy bạn:',
     'footer.onThisNetwork': 'mạng nội bộ',
     'footer.pairedDeviceSingle': '1 thiết bị ghép đôi',
     'footer.pairedDevicePlural': '{count} thiết bị ghép đôi',
+    'footer.pairedTooltip': 'Đã liên kết {count} thiết bị ghép đôi. Bấm để quản lý.',
     'footer.inRoom': 'phòng {room}',
+    'footer.inRoomTooltip': 'Đang hiển thị trong phòng {room}. Bấm để quản lý hoặc rời phòng.',
+    'footer.createdWith': 'Phát triển với',
+    'footer.by': 'bởi',
+
+    // Peers View
+    'peers.nearbyDevice': 'Thiết bị lân cận',
+    'peers.nearbyPeer': 'Thiết bị lân cận',
+    'peers.ready': 'Sẵn sàng',
 
     // Badges & Status
     'badges.paired': 'Ghép đôi',
@@ -211,10 +274,15 @@ export const TRANSLATIONS = {
     'settings.autoDownload': 'Tự động tải file',
     'settings.autoDownloadDesc':
       'Tự động tải file ngay sau khi chuyển tiếp thành công mà không cần hỏi',
+    'settings.managePairs': 'Quản lý...',
+    'settings.unpairAll': 'Hủy ghép tất cả',
     'settings.close': 'Đóng',
 
     // Pair Modal
     'pair.title': 'Ghép đôi thiết bị mới',
+    'pair.tabMyCode': 'Mã của tôi',
+    'pair.tabEnterCode': 'Nhập mã PIN',
+    'pair.deviceFallback': 'Thiết bị',
     'pair.subtitle':
       'Liên kết vĩnh viễn các thiết bị để tìm thấy nhau mọi lúc qua mạng Wi-Fi hoặc 4G/5G khác nhau.',
     'pair.enterPinTitle': 'Nhập mã PIN 6 số từ thiết bị kia',
@@ -246,15 +314,29 @@ export const TRANSLATIONS = {
     'public.subtitle':
       'Các thiết bị trong cùng phòng công khai có thể nhìn thấy và gửi file cho nhau không phụ thuộc vào mạng.',
     'public.currentRoom': 'Hiện đang trong phòng: {room}',
+    'public.currentRoomLabel': 'Hiện đang trong phòng:',
     'public.leaveRoom': 'Rời phòng',
     'public.enterRoomId': 'Nhập mã phòng 5 ký tự',
     'public.joinRoom': 'Vào phòng',
+    'public.switchRoomPrompt': 'Hoặc chuyển sang phòng khác:',
+    'public.switchRoomBtn': 'Đổi phòng',
     'public.orShare': 'Hoặc chia sẻ liên kết phòng này:',
     'public.copyLink': 'Sao chép link phòng',
     'public.linkCopied': 'Đã sao chép liên kết phòng!',
     'public.joinedSuccess': 'Đã vào phòng {room}',
     'public.leftSuccess': 'Đã rời phòng công khai',
     'public.close': 'Đóng',
+
+    // Receive Modal
+    'receive.titleSingle': 'Yêu cầu chuyển file',
+    'receive.titleMulti': 'Yêu cầu chuyển {count} file',
+    'receive.otherFiles': 'file khác',
+    'receive.nearbyPeer': 'Một thiết bị lân cận',
+    'receive.wantsToSend': 'muốn gửi cho bạn:',
+    'receive.directStreamTip': 'Hỗ trợ ghi trực tiếp vào ổ đĩa (Không tốn RAM)',
+    'receive.decline': 'Từ chối',
+    'receive.saveLocation': 'Chọn vị trí lưu...',
+    'receive.accept': 'Chấp nhận nhận file',
 
     // File Preview Modal
     'preview.filesReceivedSingle': 'Đã nhận file',
@@ -286,14 +368,20 @@ export const TRANSLATIONS = {
 
     // Send Message Modal
     'message.title': 'Gửi tin nhắn tới {name}',
+    'message.receivedFrom': 'Tin nhắn từ {name}',
     'message.placeholder': 'Nhập nội dung tin nhắn tại đây...',
     'message.send': 'Gửi',
     'message.cancel': 'Hủy',
+    'message.copy': 'Sao chép tin nhắn',
+    'message.copiedTitle': 'Đã sao chép',
     'message.copied': 'Đã sao chép tin nhắn vào bộ nhớ tạm!',
 
     // Transfer HUD
     'hud.sending': 'Đang gửi',
     'hud.receiving': 'Đang nhận',
+    'hud.moreFiles': 'file khác',
+    'hud.almostDone': 'Sắp hoàn tất',
+    'hud.cancelTransfer': 'Hủy chuyển file',
     'hud.completed': 'Chuyển file thành công',
     'hud.cancelled': 'Đã hủy chuyển file',
     'hud.error': 'Chuyển file thất bại',
@@ -302,7 +390,23 @@ export const TRANSLATIONS = {
     'toast.fileSent': 'Đã gửi file thành công',
     'toast.filesSent': 'Đã gửi {count} file thành công',
     'toast.fileReceived': 'Đã nhận file thành công',
+    'toast.filesReceived': 'Đã nhận {count} file thành công',
+    'toast.messageSent': 'Đã gửi tin nhắn tới {name}',
     'toast.transferStarted': 'Bắt đầu chuyển file...',
+    'toast.autoAccepting': 'Tự động nhận file',
+    'toast.autoAcceptingDesc': 'Đang nhận "{file}" từ {sender}...',
+    'toast.autoAcceptEnabled': 'Đã bật tự động nhận file cho thiết bị này.',
+    'toast.autoAcceptDisabled': 'Đã tắt tự động nhận file cho thiết bị này.',
+    'toast.autoDownloadEnabled': 'Đã bật tự động tải',
+    'toast.autoDownloadDisabled': 'Đã tắt tự động tải',
+    'toast.autoDownloadEnabledDesc': 'File sẽ tự động được tải xuống sau khi nhận.',
+    'toast.autoDownloadDisabledDesc': 'File sẽ chờ bạn xác nhận trong hộp thoại xem trước.',
+    'toast.clearedPairsTitle': 'Đã xóa ghép đôi',
+    'toast.clearedPairsDesc': 'Đã xóa toàn bộ thiết bị ghép đôi.',
+    'toast.transferDeclined': 'Từ chối nhận file',
+    'toast.declinedByRecipient': 'Người nhận đã từ chối yêu cầu',
+    'toast.transferError': 'Lỗi truyền file',
+    'toast.connectionLost': 'Kết nối bị gián đoạn hoặc không thể đọc file',
     'toast.gridViewActive': 'Đã chuyển sang chế độ lưới',
     'toast.radarViewActive': 'Đã chuyển sang chế độ radar',
     'toast.pairing': 'Đang ghép đôi thiết bị...',

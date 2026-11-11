@@ -62,13 +62,20 @@ export function isMobileDevice() {
   return isIOS || isAndroid;
 }
 
+const ALREADY_COMPRESSED_EXT =
+  /\.(jpe?g|png|gif|webp|heic|heif|mp4|webm|mov|mkv|avi|mp3|ogg|m4a|aac|flac|zip|gz|7z|rar|pdf|docx|xlsx|pptx)$/i;
+
 export async function createZipFromFiles(files, progressCallback = null) {
   const zip = new JSZip();
   let completed = 0;
 
   for (const f of files) {
     const data = f.blob || f;
-    zip.file(f.name, data);
+    const isCompressed = ALREADY_COMPRESSED_EXT.test(f.name || '');
+    zip.file(f.name, data, {
+      compression: isCompressed ? 'STORE' : 'DEFLATE',
+      compressionOptions: isCompressed ? null : { level: 5 },
+    });
     completed++;
     if (progressCallback) {
       progressCallback(completed / files.length);
@@ -82,8 +89,6 @@ export async function createZipFromFiles(files, progressCallback = null) {
 
   const zipBlob = await zip.generateAsync({
     type: 'blob',
-    compression: 'DEFLATE',
-    compressionOptions: { level: 6 },
   });
 
   return {

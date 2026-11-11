@@ -22,11 +22,11 @@ export class PairModal {
 
     events.on('pair-success', (data) => {
       const pairedPeer = data.pairedWith || {};
-      const devName = pairedPeer.name?.displayName || (getLanguage() === 'vi' ? 'Thiết bị' : 'Device');
+      const devName = pairedPeer.name?.displayName || t('pair.deviceFallback');
       storage.savePairedDevice({
         secret: data.secret,
         displayName: devName,
-        deviceName: pairedPeer.name?.deviceName || 'Nearby Device',
+        deviceName: pairedPeer.name?.deviceName || t('peers.nearbyDevice'),
         deviceType: pairedPeer.name?.deviceType || 'desktop',
         autoAccept: false,
       });
@@ -61,8 +61,8 @@ export class PairModal {
         </div>
 
         <div class="pair-tabs">
-          <button class="tab-btn active" id="tab-my-code">${getLanguage() === 'vi' ? 'Mã của tôi' : 'My Pair Code'}</button>
-          <button class="tab-btn" id="tab-enter-code">${getLanguage() === 'vi' ? 'Nhập mã PIN' : 'Enter Code'}</button>
+          <button class="tab-btn active" id="tab-my-code">${t('pair.tabMyCode')}</button>
+          <button class="tab-btn" id="tab-enter-code">${t('pair.tabEnterCode')}</button>
         </div>
 
         <div class="tab-content" id="my-code-view">

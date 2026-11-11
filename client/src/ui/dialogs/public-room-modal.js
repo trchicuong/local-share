@@ -53,7 +53,7 @@ export class PublicRoomModal {
           </div>
 
           <div class="public-room-active-box">
-            <p class="pair-instructions">${t('public.currentRoom', { room: '' })}</p>
+            <p class="pair-instructions">${t('public.currentRoomLabel')}</p>
             <div class="room-code-badge">${this.currentRoom}</div>
             
             <div class="qr-box" style="margin: 0.6rem 0;">
@@ -68,7 +68,7 @@ export class PublicRoomModal {
 
           <hr class="modal-divider" style="margin: 1rem 0; border: none; border-top: 1px solid var(--border-color);" />
 
-          <p class="pair-instructions" style="font-size: 0.8rem; margin-top: 10px;">${getLanguage() === 'vi' ? 'Hoặc chuyển sang phòng khác:' : 'Or switch to another room:'}</p>
+          <p class="pair-instructions" style="font-size: 0.8rem; margin-top: 10px;">${t('public.switchRoomPrompt')}</p>
           <div class="segmented-code-container" id="room-switch-segmented-input">
             <div class="code-cells-group">
               <input type="text" class="code-cell" maxlength="1" data-index="0" />
@@ -79,7 +79,7 @@ export class PublicRoomModal {
             </div>
           </div>
           <div class="pair-action-row">
-            <button class="btn btn-primary btn-block" id="room-switch-btn" disabled>${getLanguage() === 'vi' ? 'Đổi phòng' : 'Switch Room'}</button>
+            <button class="btn btn-primary btn-block" id="room-switch-btn" disabled>${t('public.switchRoomBtn')}</button>
           </div>
         </div>
       `;

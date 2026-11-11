@@ -144,9 +144,7 @@ export class PairedDevicesModal {
           storage.updateAutoAccept(secret, e.target.checked);
           events.emit('notify', {
             title: t('paired.autoAccept'),
-            message: e.target.checked
-              ? (getLanguage() === 'vi' ? 'Đã bật tự động nhận file cho thiết bị này.' : 'Auto-Accept enabled for this device.')
-              : (getLanguage() === 'vi' ? 'Đã tắt tự động nhận file cho thiết bị này.' : 'Auto-Accept disabled for this device.'),
+            message: e.target.checked ? t('toast.autoAcceptEnabled') : t('toast.autoAcceptDisabled'),
             type: 'info',
             duration: 2000,
           });

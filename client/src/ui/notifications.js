@@ -19,33 +19,39 @@ export class Notifications {
       this.playSound();
       if (data.type === 'receive') {
         const count = data.files?.length || 1;
-        const msg = count > 1 ? t('toast.filesSent', { count }) : (data.file?.name || data.files?.[0]?.name || t('toast.fileReceived'));
+        const msg =
+          count > 1
+            ? t('toast.filesReceived', { count })
+            : data.file?.name || data.files?.[0]?.name || t('toast.fileReceived');
         this.show({
           title: t('hud.completed'),
           message: msg,
           type: 'success',
         });
       } else {
+        const count = data.filesCount || 1;
         this.show({
           title: t('hud.completed'),
-          message: t('toast.fileSent'),
+          message: count > 1 ? t('toast.filesSent', { count }) : t('toast.fileSent'),
           type: 'success',
         });
       }
     });
 
     events.on('transfer-declined', (data) => {
+      const isDefaultReason =
+        !data?.reason || data.reason === 'Rejected by user' || data.reason === 'User declined';
       this.show({
-        title: 'Transfer Declined',
-        message: data.reason || 'Declined by recipient',
+        title: t('toast.transferDeclined'),
+        message: isDefaultReason ? t('toast.declinedByRecipient') : data.reason,
         type: 'error',
       });
     });
 
     events.on('transfer-error', (err) => {
       this.show({
-        title: 'Transfer Error',
-        message: err.message || 'Connection lost',
+        title: t('toast.transferError'),
+        message: t('toast.connectionLost'),
         type: 'error',
       });
     });

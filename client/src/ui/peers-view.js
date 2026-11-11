@@ -288,16 +288,16 @@ export class PeersView {
       : [peer.roomType || 'ip'];
 
     let barsHtml = '';
-    // Paired status bar (Green)
+    // Paired status bar (Green: #10b981)
     if (rooms.includes('secret') || peer.secret || peer.roomType === 'secret') {
       barsHtml += `<span class="peer-status-bar secret" title="${t('badges.paired')}"></span>`;
     }
-    // Public room status bar (Blue)
+    // Public room status bar (Amber/Orange: #f59e0b)
     if (rooms.includes('public') || peer.publicRoomId || peer.roomId) {
       const roomNum = peer.publicRoomId || peer.roomId || '';
       barsHtml += `<span class="peer-status-bar public" title="${t('badges.public')}: #${roomNum}"></span>`;
     }
-    // LAN status bar (Muted Gray)
+    // LAN status bar (Blue: #3b82f6)
     if (rooms.includes('ip') || (!rooms.includes('secret') && !rooms.includes('public'))) {
       barsHtml += `<span class="peer-status-bar ip" title="${t('badges.lan')}"></span>`;
     }
@@ -312,16 +312,23 @@ export class PeersView {
       <div class="peer-status-bars">
         ${barsHtml}
       </div>
-      <div class="peer-name" title="${peer.name?.displayName || 'Nearby Device'}">${peer.name?.displayName || 'Nearby Device'}</div>
-      <div class="peer-sub">${peer.name?.deviceName || 'Ready'}</div>
+      <div class="peer-name" title="${peer.name?.displayName || t('peers.nearbyDevice')}">${peer.name?.displayName || t('peers.nearbyDevice')}</div>
+      <div class="peer-sub">${peer.name?.deviceName || t('peers.ready')}</div>
     `;
+
+    const prewarmConnection = () => {
+      const conn = transferManager.getOrCreateConnection(peer.id);
+      conn.createDataChannel('los-data');
+    };
+
+    node.addEventListener('pointerdown', prewarmConnection, { passive: true });
+    node.addEventListener('dragenter', prewarmConnection, { passive: true });
 
     // Click: choose file to send
     node.addEventListener('click', () => {
       this.selectedPeerId = peer.id;
       // Pre-warm WebRTC connection so DataChannel is ready while user chooses files
-      const conn = transferManager.getOrCreateConnection(peer.id);
-      conn.createDataChannel('los-data');
+      prewarmConnection();
       this.fileInput.value = '';
       this.fileInput.click();
     });

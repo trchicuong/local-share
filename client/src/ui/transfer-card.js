@@ -7,17 +7,31 @@ export class TransferCard {
   constructor(containerElement) {
     this.container = containerElement;
     this.visible = false;
+    this.currentSession = null;
+    this.lastTelemetry = null;
 
     this._bindEvents();
   }
 
   _bindEvents() {
     events.on('transfer-started', (session) => {
+      this.currentSession = session;
+      this.lastTelemetry = null;
       this.show(session);
     });
 
     events.on('transfer-progress', (telemetry) => {
+      this.lastTelemetry = telemetry;
       this.update(telemetry);
+    });
+
+    events.on('language-changed', () => {
+      if (this.visible && this.currentSession) {
+        this.show(this.currentSession);
+        if (this.lastTelemetry) {
+          this.update(this.lastTelemetry);
+        }
+      }
     });
 
     events.on('transfer-completed', () => {
@@ -44,7 +58,7 @@ export class TransferCard {
     const isSend = session.type === 'send';
     const isMulti = (session.filesCount || 1) > 1;
     const displayFileName = isMulti
-      ? `${session.fileName} (+${session.filesCount - 1} more)`
+      ? `${session.fileName} (+${session.filesCount - 1} ${t('hud.moreFiles')})`
       : session.fileName;
 
     this.container.innerHTML = `
@@ -71,7 +85,7 @@ export class TransferCard {
 
           <div class="hud-right">
             <span class="hud-percent" id="hud-percent">0%</span>
-            <button class="hud-cancel-btn" id="hud-cancel" title="Cancel Transfer" aria-label="Cancel Transfer">
+            <button class="hud-cancel-btn" id="hud-cancel" title="${t('hud.cancelTransfer')}" aria-label="${t('hud.cancelTransfer')}">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                 <line x1="18" y1="6" x2="6" y2="18"></line>
                 <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -104,11 +118,13 @@ export class TransferCard {
     if (percent) percent.textContent = `${Math.round(telemetry.progress)}%`;
     if (speed) speed.textContent = formatSpeed(telemetry.speed);
     if (bytes) bytes.textContent = `${formatBytes(telemetry.currentBytes)} / ${formatBytes(telemetry.totalBytes)}`;
-    if (eta) eta.textContent = telemetry.etaSeconds > 0 ? formatTime(telemetry.etaSeconds) : 'Almost done';
+    if (eta) eta.textContent = telemetry.etaSeconds > 0 ? formatTime(telemetry.etaSeconds) : t('hud.almostDone');
   }
 
   hide() {
     this.visible = false;
+    this.currentSession = null;
+    this.lastTelemetry = null;
     this.container.classList.add('hidden');
     this.container.innerHTML = '';
   }

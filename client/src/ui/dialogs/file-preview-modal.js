@@ -92,7 +92,7 @@ export class FilePreviewModal {
     this.zipArchive = null;
     this.selectedIndex = 0;
 
-    const senderName = data.senderName || 'Nearby Device';
+    const senderName = data.senderName || t('peers.nearbyDevice');
     const isMulti = files.length > 1;
     const totalBytes = files.reduce((acc, f) => acc + (f.size || 0), 0);
     const isMobile = isMobileDevice();
@@ -101,7 +101,7 @@ export class FilePreviewModal {
     // Initial selected file
     const primaryFile = files[0];
     const initialTitle = isMulti
-      ? `${files.length} ${t('preview.filesReceivedPlural', { count: files.length })} (${formatBytes(totalBytes)})`
+      ? `${t('preview.filesReceivedPlural', { count: files.length })} (${formatBytes(totalBytes)})`
       : `${primaryFile.name} (${formatBytes(primaryFile.size || totalBytes)})`;
 
     // Multi-file list if more than 1 file
@@ -385,6 +385,9 @@ export class FilePreviewModal {
   }
 
   close() {
+    if (this.zipArchive?.downloadUrl) {
+      URL.revokeObjectURL(this.zipArchive.downloadUrl);
+    }
     this.modal.classList.add('hidden');
     this.modal.innerHTML = '';
     this.currentFiles = [];

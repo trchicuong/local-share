@@ -95,11 +95,19 @@ class LoSApp {
     this._updateControlIcons();
     this._updateDiscoveryBadges();
 
-    // Footer labels
+    // Footer labels & tooltips
+    const myAvatar = document.getElementById('my-avatar');
+    if (myAvatar) myAvatar.title = t('footer.openSettings');
+
     const knownAsLabel = document.querySelector('.known-as-label');
     if (knownAsLabel) knownAsLabel.textContent = t('footer.youAreKnownAs');
     const knownAsWrapper = document.getElementById('name-badge-btn');
     if (knownAsWrapper) knownAsWrapper.title = t('footer.editName');
+
+    const myNameEl = document.getElementById('my-display-name');
+    if (myNameEl && !signaling.selfName) {
+      myNameEl.textContent = t('footer.connecting');
+    }
 
     const discoveryLabel = document.querySelector('.discovery-label');
     if (discoveryLabel) discoveryLabel.textContent = t('footer.youCanBeDiscovered');
@@ -130,26 +138,37 @@ class LoSApp {
     const viewBtn = document.getElementById('btn-toggle-view');
     const aboutBtn = document.getElementById('btn-about');
     const settingsBtn = document.getElementById('btn-settings');
+    const installBtn = document.getElementById('btn-install');
 
     if (publicRoomBtn) {
       publicRoomBtn.innerHTML = ICONS.users;
       publicRoomBtn.title = t('header.joinPublicRoom');
+      publicRoomBtn.setAttribute('aria-label', t('header.joinPublicRoom'));
     }
     if (pairBtn) {
       pairBtn.innerHTML = ICONS.pair;
       pairBtn.title = t('header.pairDevices');
+      pairBtn.setAttribute('aria-label', t('header.pairDevices'));
     }
     if (viewBtn) {
       viewBtn.innerHTML = this.peersView.viewMode === 'radar' ? ICONS.grid : ICONS.radar;
-      viewBtn.title = this.peersView.viewMode === 'radar' ? t('header.switchToGrid') : t('header.switchToRadar');
+      const viewLabel = this.peersView.viewMode === 'radar' ? t('header.switchToGrid') : t('header.switchToRadar');
+      viewBtn.title = viewLabel;
+      viewBtn.setAttribute('aria-label', viewLabel);
     }
     if (aboutBtn) {
       aboutBtn.innerHTML = ICONS.info;
       aboutBtn.title = t('header.about');
+      aboutBtn.setAttribute('aria-label', t('header.about'));
     }
     if (settingsBtn) {
       settingsBtn.innerHTML = ICONS.settings;
       settingsBtn.title = t('header.settings');
+      settingsBtn.setAttribute('aria-label', t('header.settings'));
+    }
+    if (installBtn) {
+      installBtn.title = t('header.installApp');
+      installBtn.setAttribute('aria-label', t('header.installApp'));
     }
   }
 
@@ -166,7 +185,7 @@ class LoSApp {
       if (pairedCount > 0) {
         pairedEl.classList.remove('hidden');
         pairedEl.textContent = pairedCount === 1 ? t('footer.pairedDeviceSingle') : t('footer.pairedDevicePlural', { count: pairedCount });
-        pairedEl.title = `Connected to ${pairedCount} paired device(s). Click to view in settings.`;
+        pairedEl.title = t('footer.pairedTooltip', { count: pairedCount });
       } else {
         pairedEl.classList.add('hidden');
       }
@@ -178,7 +197,7 @@ class LoSApp {
       if (activeRoom) {
         publicEl.classList.remove('hidden');
         publicEl.textContent = t('footer.inRoom', { room: activeRoom });
-        publicEl.title = `Visible in room ${activeRoom}. Click to manage or leave.`;
+        publicEl.title = t('footer.inRoomTooltip', { room: activeRoom });
       } else {
         publicEl.classList.add('hidden');
       }
@@ -370,6 +389,23 @@ class LoSApp {
       if (peer.id === signaling.selfId) {
         const nameEl = document.getElementById('my-display-name');
         if (nameEl) nameEl.textContent = peer.name?.displayName;
+        return;
+      }
+
+      // Real-time sync of paired device metadata when a paired peer changes their display name
+      const existingPeer = this.peersView?.peers?.get(peer.id);
+      const secret = peer.secret || existingPeer?.secret || (Array.isArray(existingPeer?.secrets) ? existingPeer.secrets[0] : null);
+      if (secret) {
+        const dev = storage.getPairedDevice(secret);
+        if (dev) {
+          storage.savePairedDevice({
+            ...dev,
+            displayName: peer.name?.displayName || dev.displayName,
+            deviceName: peer.name?.deviceName || dev.deviceName,
+            deviceType: peer.name?.deviceType || dev.deviceType,
+          });
+          events.emit('pair-updated');
+        }
       }
     });
 
