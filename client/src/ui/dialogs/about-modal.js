@@ -71,7 +71,7 @@ export class AboutModal {
             </div>
           </a>
 
-          <a href="https://github.com/trchicuong/local-share#readme" target="_blank" rel="noopener noreferrer" class="about-link-card" id="about-faq-link">
+          <a href="https://trchicuong.gitbook.io/local-share" target="_blank" rel="noopener noreferrer" class="about-link-card" id="about-faq-link">
             <div class="about-link-icon faq-icon">
               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="12" cy="12" r="10"/>
