@@ -41,11 +41,22 @@ export class PeersView {
 
     this.fileInput.addEventListener('change', (e) => {
       if (this.selectedPeerId && e.target.files && e.target.files.length > 0) {
-        transferManager.sendFiles(this.selectedPeerId, e.target.files);
+        const targetPeerId = this.selectedPeerId;
+        const selectedFiles = Array.from(e.target.files);
         this.selectedPeerId = null;
-        this.fileInput.value = '';
+        transferManager.sendFiles(targetPeerId, selectedFiles);
       }
     });
+
+    const resetFileInput = () => {
+      if (this.fileInput) {
+        this.fileInput.value = '';
+      }
+    };
+    events.on('transfer-completed', resetFileInput);
+    events.on('transfer-cancelled', resetFileInput);
+    events.on('transfer-declined', resetFileInput);
+    events.on('transfer-error', resetFileInput);
   }
 
   _bindEvents() {
@@ -311,6 +322,7 @@ export class PeersView {
       // Pre-warm WebRTC connection so DataChannel is ready while user chooses files
       const conn = transferManager.getOrCreateConnection(peer.id);
       conn.createDataChannel('los-data');
+      this.fileInput.value = '';
       this.fileInput.click();
     });
 

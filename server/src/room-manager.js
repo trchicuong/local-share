@@ -31,6 +31,7 @@ export default class RoomManager {
   leaveIpRoom(peer) {
     const room = this.ipRooms.get(peer.ip);
     if (!room) return [];
+    if (room.get(peer.id) && room.get(peer.id) !== peer) return [];
     room.delete(peer.id);
     const otherPeers = Array.from(room.values());
     if (room.size === 0) {
@@ -58,6 +59,7 @@ export default class RoomManager {
   leaveSecretRoom(peer, secret) {
     const room = this.secretRooms.get(secret);
     if (!room) return [];
+    if (room.get(peer.id) && room.get(peer.id) !== peer) return [];
     room.delete(peer.id);
     const otherPeers = Array.from(room.values());
     if (room.size === 0) {
@@ -101,10 +103,12 @@ export default class RoomManager {
     const room = this.publicRooms.get(roomId);
     let otherPeers = [];
     if (room) {
-      room.delete(peer.id);
-      otherPeers = Array.from(room.values());
-      if (room.size === 0) {
-        this.publicRooms.delete(roomId);
+      if (!room.get(peer.id) || room.get(peer.id) === peer) {
+        room.delete(peer.id);
+        otherPeers = Array.from(room.values());
+        if (room.size === 0) {
+          this.publicRooms.delete(roomId);
+        }
       }
     }
     peer.publicRoomId = null;

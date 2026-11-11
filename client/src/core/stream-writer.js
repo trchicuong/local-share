@@ -23,6 +23,8 @@ export class FileStreamWriter {
     this.fileHandle = options.fileHandle || null;
     this.writableStream = null;
     this.aborted = false;
+    this.finalized = false;
+    this._writeQueue = Promise.resolve();
   }
 
   async init() {
@@ -34,10 +36,24 @@ export class FileStreamWriter {
         this.writableStream = null;
       }
     }
+    if (this.size === 0) {
+      await this.finalize();
+    }
   }
 
-  async writeChunk(arrayBuffer) {
-    if (this.aborted) return;
+  writeChunk(arrayBuffer) {
+    this._writeQueue = this._writeQueue
+      .then(() => this._processChunk(arrayBuffer))
+      .catch((err) => {
+        if (!this.aborted) {
+          this.onError(err);
+        }
+      });
+    return this._writeQueue;
+  }
+
+  async _processChunk(arrayBuffer) {
+    if (this.aborted || this.finalized) return;
 
     const chunkLength = arrayBuffer.byteLength || arrayBuffer.size || 0;
     this.receivedBytes += chunkLength;
@@ -66,7 +82,8 @@ export class FileStreamWriter {
   }
 
   async finalize() {
-    if (this.aborted) return;
+    if (this.aborted || this.finalized) return;
+    this.finalized = true;
 
     if (this.writableStream) {
       try {

@@ -24,10 +24,11 @@ export class TransferManager {
 
     // Fallback relay events
     events.on('relay-request', (msg) => this._onTransferRequest(msg.sender, msg));
-    events.on('relay-files-transfer-response', (msg) => this._onTransferResponse(msg));
-    events.on('relay-header', (msg) => this._onTransferHeader(msg.sender, msg));
+    events.on('relay-files-transfer-response', (msg) => this._onTransferResponse(msg, true));
+    events.on('relay-header', (msg) => this._onTransferHeader(msg.sender, msg, true));
     events.on('relay-partition-received', (msg) => this._onPartitionAck(msg));
     events.on('relay-file-transfer-complete', (msg) => this._onRemoteTransferComplete(msg));
+    events.on('relay-transfer-cancel', (msg) => this._onRemoteTransferCancel(msg));
     events.on('relay-ws-chunk', (msg) => this._onWsChunkReceived(msg));
     events.on('relay-text', (msg) => {
       events.emit('text-received', msg.sender, msg.text);
@@ -45,7 +46,12 @@ export class TransferManager {
 
   getOrCreateConnection(peerId) {
     if (this.connections.has(peerId)) {
-      return this.connections.get(peerId);
+      const existing = this.connections.get(peerId);
+      if (existing.isHealthy()) {
+        return existing;
+      }
+      existing.close();
+      this.connections.delete(peerId);
     }
 
     // Polite peer determination: lexicographical comparison
@@ -71,8 +77,19 @@ export class TransferManager {
       }
     });
 
+    conn.on('disconnected', (state) => {
+      if (state === 'failed' || state === 'closed') {
+        conn.close();
+        if (this.connections.get(peerId) === conn) {
+          this.connections.delete(peerId);
+        }
+      }
+    });
+
     conn.on('close', () => {
-      this.connections.delete(peerId);
+      if (this.connections.get(peerId) === conn) {
+        this.connections.delete(peerId);
+      }
     });
 
     this.connections.set(peerId, conn);
@@ -125,6 +142,10 @@ export class TransferManager {
         this._onRemoteTransferComplete(msg);
         break;
 
+      case 'transfer-cancel':
+        this._onRemoteTransferCancel(msg);
+        break;
+
       case 'text':
         events.emit('text-received', { id: peerId }, msg.text);
         break;
@@ -142,6 +163,49 @@ export class TransferManager {
       return;
     }
     this.activeTransfer.writer.writeChunk(arrayBuffer);
+  }
+
+  _sendControl(peerId, type, payload, preferRelay = false) {
+    const conn = this.connections.get(peerId);
+    if (!preferRelay && conn && conn.dc && conn.dc.readyState === 'open') {
+      if (conn.sendJSON(payload)) {
+        return false; // Sent via P2P DataChannel (not relay)
+      }
+    }
+    signaling.sendRelay(type, peerId, payload);
+    return true; // Sent via WebSocket Relay
+  }
+
+  _sendChunkViaRelay(recipientId, chunk) {
+    const bytes = new Uint8Array(chunk);
+    let binary = '';
+    const step = 8192;
+    for (let i = 0; i < bytes.length; i += step) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + step, bytes.length)));
+    }
+    const base64 = btoa(binary);
+    signaling.sendRelay('ws-chunk', recipientId, { chunk: base64 });
+  }
+
+  async _waitForBufferDrain(conn, useRelay) {
+    const HIGH_WATER_MARK = 512 * 1024; // 512 KB
+    const LOW_WATER_MARK = 256 * 1024; // 256 KB
+    let waited = 0;
+    const maxWaitMs = 5000;
+
+    if (useRelay) {
+      if (signaling.bufferedAmount <= HIGH_WATER_MARK) return;
+      while (signaling.bufferedAmount > LOW_WATER_MARK && waited < maxWaitMs) {
+        await new Promise((r) => setTimeout(r, 15));
+        waited += 15;
+      }
+    } else if (conn && conn.dc && conn.dc.readyState === 'open') {
+      if (conn.bufferedAmount <= HIGH_WATER_MARK) return;
+      while (conn.dc && conn.dc.readyState === 'open' && conn.bufferedAmount > LOW_WATER_MARK && waited < maxWaitMs) {
+        await new Promise((r) => setTimeout(r, 15));
+        waited += 15;
+      }
+    }
   }
 
   // --- Sending Flow ---
@@ -186,11 +250,9 @@ export class TransferManager {
       useRelay: session.useRelay,
     };
 
-    if (isWebRTCOpen) {
-      conn.sendJSON(requestMsg);
-    } else {
-      // Use WebSocket relay fallback
-      signaling.sendRelay('request', recipientId, requestMsg);
+    const usedRelay = this._sendControl(recipientId, 'request', requestMsg, session.useRelay);
+    if (usedRelay) {
+      session.useRelay = true;
     }
 
     events.emit('transfer-started', {
@@ -202,7 +264,7 @@ export class TransferManager {
     });
   }
 
-  _onTransferResponse(msg) {
+  _onTransferResponse(msg, fromRelay = false) {
     if (!this.activeTransfer || this.activeTransfer.type !== 'send') return;
     if (!msg.accepted) {
       events.emit('transfer-declined', { reason: msg.reason || 'User declined' });
@@ -210,8 +272,13 @@ export class TransferManager {
       return;
     }
 
+    const conn = this.connections.get(this.activeTransfer.recipientId);
+    const isWebRTCOpen = Boolean(conn && conn.dc && conn.dc.readyState === 'open');
+
     if (typeof msg.useRelay === 'boolean') {
-      this.activeTransfer.useRelay = msg.useRelay;
+      this.activeTransfer.useRelay = msg.useRelay || !isWebRTCOpen;
+    } else if (fromRelay || !isWebRTCOpen) {
+      this.activeTransfer.useRelay = true;
     }
 
     // Recipient accepted! Start sending the first file from queue
@@ -239,6 +306,11 @@ export class TransferManager {
     session.currentFile = file;
 
     const conn = this.connections.get(session.recipientId);
+    const isWebRTCOpen = Boolean(conn && conn.dc && conn.dc.readyState === 'open');
+    if (!isWebRTCOpen) {
+      session.useRelay = true;
+    }
+
     const fileIndex = session.files.length - session.filesQueue.length - 1;
     const mime = getMimeType(file.name, file.type);
 
@@ -252,38 +324,26 @@ export class TransferManager {
       filesCount: session.filesCount,
     };
 
-    if (session.useRelay) {
-      signaling.sendRelay('header', session.recipientId, headerMsg);
-    } else {
-      conn?.sendJSON(headerMsg);
+    const headerUsedRelay = this._sendControl(session.recipientId, 'header', headerMsg, session.useRelay);
+    if (headerUsedRelay) {
+      session.useRelay = true;
     }
 
     session.reader = new FileStreamReader(file, {
-      onChunk: (chunk) => {
+      onChunk: async (chunk) => {
+        if (this.activeTransfer !== session) return;
+
+        await this._waitForBufferDrain(conn, session.useRelay);
+        if (this.activeTransfer !== session) return;
+
         if (session.useRelay) {
-          // Convert arrayBuffer to base64 safely without call stack limit
-          const bytes = new Uint8Array(chunk);
-          let binary = '';
-          const chunkSize = 8192;
-          for (let i = 0; i < bytes.length; i += chunkSize) {
-            binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + chunkSize, bytes.length)));
-          }
-          const base64 = btoa(binary);
-          signaling.sendRelay('ws-chunk', session.recipientId, { chunk: base64 });
+          this._sendChunkViaRelay(session.recipientId, chunk);
         } else {
-          try {
-            conn?.send(chunk);
-          } catch (err) {
-            console.warn('[WebRTC DataChannel send failed, switching to relay]', err);
+          const sentOk = conn ? conn.send(chunk) : false;
+          if (!sentOk) {
+            console.warn('[WebRTC DataChannel send failed, switching to WebSocket Relay]');
             session.useRelay = true;
-            const bytes = new Uint8Array(chunk);
-            let binary = '';
-            const chunkSize = 8192;
-            for (let i = 0; i < bytes.length; i += chunkSize) {
-              binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + chunkSize, bytes.length)));
-            }
-            const base64 = btoa(binary);
-            signaling.sendRelay('ws-chunk', session.recipientId, { chunk: base64 });
+            this._sendChunkViaRelay(session.recipientId, chunk);
           }
         }
       },
@@ -299,6 +359,7 @@ export class TransferManager {
         session.reader = null;
       },
       onError: (err) => {
+        this._sendControl(session.recipientId, 'transfer-cancel', { type: 'transfer-cancel' }, session.useRelay);
         events.emit('transfer-error', err);
         this._endActiveTransfer();
       },
@@ -421,10 +482,9 @@ export class TransferManager {
       useRelay: useRelay,
     };
 
-    if (useRelay) {
-      signaling.sendRelay('files-transfer-response', senderId, responseMsg);
-    } else {
-      conn?.sendJSON(responseMsg);
+    const respUsedRelay = this._sendControl(senderId, 'files-transfer-response', responseMsg, useRelay);
+    if (respUsedRelay) {
+      session.useRelay = true;
     }
 
     events.emit('transfer-started', {
@@ -437,43 +497,45 @@ export class TransferManager {
   }
 
   declineTransfer(senderId) {
-    const conn = this.connections.get(senderId);
     const responseMsg = {
       type: 'files-transfer-response',
       accepted: false,
       reason: 'Rejected by user',
     };
-    if (conn && conn.dc && conn.dc.readyState === 'open') {
-      conn.sendJSON(responseMsg);
-    } else {
-      signaling.sendRelay('files-transfer-response', senderId, responseMsg);
-    }
+    this._sendControl(senderId, 'files-transfer-response', responseMsg, false);
     this._endActiveTransfer();
   }
 
-  async _onTransferHeader(sender, msg) {
+  async _onTransferHeader(sender, msg, fromRelay = false) {
     if (!this.activeTransfer || this.activeTransfer.type !== 'receive') return;
 
     const session = this.activeTransfer;
-    session.writer = new FileStreamWriter(msg, {
+    if (fromRelay) {
+      session.useRelay = true;
+    }
+
+    // Ensure session.writer is null while new writer initializes so incoming chunks queue into pendingChunks
+    session.writer = null;
+
+    const writer = new FileStreamWriter(msg, {
       fileHandle: session.fileHandle,
       onProgress: (received, total, bytesSinceLastAck) => {
+        if (this.activeTransfer !== session) return;
         const currentBatchBytes = (session.totalBytesReceived || 0) + received;
         this._updateTelemetry(currentBatchBytes, session.totalSize);
 
         // Send back partition ACK every 1MB for backpressure flow control
         if (bytesSinceLastAck >= 1024 * 1024 && received < total) {
-          session.writer.bytesSinceLastAck = 0;
+          writer.bytesSinceLastAck = 0;
           const ackMsg = { type: 'partition-received', offset: received };
-          if (session.useRelay) {
-            signaling.sendRelay('partition-received', session.senderId, ackMsg);
-          } else {
-            const conn = this.connections.get(session.senderId);
-            conn?.sendJSON(ackMsg);
+          const ackUsedRelay = this._sendControl(session.senderId, 'partition-received', ackMsg, session.useRelay);
+          if (ackUsedRelay) {
+            session.useRelay = true;
           }
         }
       },
       onComplete: (fileResult) => {
+        if (this.activeTransfer !== session) return;
         if (!session.filesReceived) session.filesReceived = [];
         session.filesReceived.push(fileResult);
         session.totalBytesReceived = (session.totalBytesReceived || 0) + fileResult.size;
@@ -484,11 +546,9 @@ export class TransferManager {
           name: fileResult.name,
           count: session.filesReceived.length,
         };
-        if (session.useRelay) {
-          signaling.sendRelay('file-transfer-complete', session.senderId, completeMsg);
-        } else {
-          const conn = this.connections.get(session.senderId);
-          conn?.sendJSON(completeMsg);
+        const completeUsedRelay = this._sendControl(session.senderId, 'file-transfer-complete', completeMsg, session.useRelay);
+        if (completeUsedRelay) {
+          session.useRelay = true;
         }
 
         const isLastFile = session.filesReceived.length >= (session.filesCount || 1);
@@ -519,24 +579,29 @@ export class TransferManager {
         }
       },
       onError: (err) => {
+        this._sendControl(session.senderId, 'transfer-cancel', { type: 'transfer-cancel' }, session.useRelay);
         events.emit('transfer-error', err);
         this._endActiveTransfer();
       },
     });
 
-    await session.writer.init();
+    await writer.init();
+    if (this.activeTransfer !== session) return;
 
-    // Process any chunks that arrived while writer was initializing
-    if (session.pendingChunks && session.pendingChunks.length > 0) {
-      for (const chunk of session.pendingChunks) {
-        await session.writer.writeChunk(chunk);
-      }
-      session.pendingChunks = [];
+    // Drain any chunks that arrived before or during writer.init() in strict FIFO order
+    while (session.pendingChunks && session.pendingChunks.length > 0 && !writer.finalized) {
+      const chunk = session.pendingChunks.shift();
+      await writer.writeChunk(chunk);
+    }
+
+    if (this.activeTransfer === session && !writer.finalized) {
+      session.writer = writer;
     }
   }
 
   _onWsChunkReceived(msg) {
     if (!this.activeTransfer || this.activeTransfer.type !== 'receive') return;
+    this.activeTransfer.useRelay = true;
     try {
       const binary = atob(msg.chunk);
       const bytes = new Uint8Array(binary.length);
@@ -590,6 +655,24 @@ export class TransferManager {
   }
 
   cancelActiveTransfer() {
+    if (!this.activeTransfer) return;
+    const peerId =
+      this.activeTransfer.type === 'send'
+        ? this.activeTransfer.recipientId
+        : this.activeTransfer.senderId;
+    const useRelay = Boolean(this.activeTransfer.useRelay);
+
+    if (this.activeTransfer.reader) this.activeTransfer.reader.abort();
+    if (this.activeTransfer.writer) this.activeTransfer.writer.abort();
+    this._endActiveTransfer();
+
+    if (peerId) {
+      this._sendControl(peerId, 'transfer-cancel', { type: 'transfer-cancel' }, useRelay);
+    }
+    events.emit('transfer-cancelled');
+  }
+
+  _onRemoteTransferCancel() {
     if (!this.activeTransfer) return;
     if (this.activeTransfer.reader) this.activeTransfer.reader.abort();
     if (this.activeTransfer.writer) this.activeTransfer.writer.abort();

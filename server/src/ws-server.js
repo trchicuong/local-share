@@ -8,6 +8,7 @@ export default class LoSWsServer {
     this.conf = conf;
     this.roomManager = new RoomManager();
     this.keepAliveTimers = new Map();
+    this.activePeers = new Map();
 
     this.wss = new WebSocketServer({ server: httpServer });
     this.wss.on('connection', (socket, request) => {
@@ -33,6 +34,23 @@ export default class LoSWsServer {
   }
 
   _handleConnection(peer) {
+    // If an older socket with the same persistent peer.id is still open (e.g. mobile resume after camera), replace it cleanly
+    const existingPeer = this.activePeers.get(peer.id);
+    if (existingPeer && existingPeer !== peer) {
+      this.activePeers.delete(peer.id);
+      const oldTimer = this.keepAliveTimers.get(existingPeer);
+      if (oldTimer) {
+        clearTimeout(oldTimer);
+        this.keepAliveTimers.delete(existingPeer);
+      }
+      try {
+        existingPeer.socket.terminate();
+      } catch (_) {
+        // Ignore terminate errors on stale socket
+      }
+    }
+    this.activePeers.set(peer.id, peer);
+
     peer.socket.on('message', (data) => this._handleMessage(peer, data));
     peer.socket.on('error', (err) => {
       if (this.conf.debugMode) {
@@ -80,9 +98,9 @@ export default class LoSWsServer {
   }
 
   _handleMessage(sender, rawData) {
-    if (sender.rateLimitReached()) {
-      return;
-    }
+    // Any incoming traffic from sender confirms connection is alive
+    sender.isAlive = true;
+    this._resetKeepAlive(sender);
 
     let message;
     try {
@@ -93,10 +111,27 @@ export default class LoSWsServer {
 
     if (!message || !message.type) return;
 
+    // Exempt real-time WebRTC signaling, heartbeat, and WebSocket Relay transfer packets from control rate limiting
+    const isExemptFromRateLimit =
+      message.type === 'pong' ||
+      message.type === 'signal' ||
+      message.type === 'request' ||
+      message.type === 'header' ||
+      message.type === 'partition' ||
+      message.type === 'partition-received' ||
+      message.type === 'progress' ||
+      message.type === 'files-transfer-response' ||
+      message.type === 'file-transfer-complete' ||
+      message.type === 'transfer-cancel' ||
+      message.type === 'text' ||
+      message.type === 'ws-chunk';
+
+    if (!isExemptFromRateLimit && sender.rateLimitReached()) {
+      return;
+    }
+
     switch (message.type) {
       case 'pong':
-        sender.isAlive = true;
-        this._resetKeepAlive(sender);
         break;
 
       case 'change-name':
@@ -272,6 +307,7 @@ export default class LoSWsServer {
       case 'progress':
       case 'files-transfer-response':
       case 'file-transfer-complete':
+      case 'transfer-cancel':
       case 'text':
       case 'ws-chunk':
         if (this.conf.wsFallback) {
@@ -341,6 +377,18 @@ export default class LoSWsServer {
   }
 
   _handleDisconnect(peer) {
+    const timer = this.keepAliveTimers.get(peer);
+    if (timer) {
+      clearTimeout(timer);
+      this.keepAliveTimers.delete(peer);
+    }
+
+    // If a newer connection with the same peer.id has already replaced this peer, do not evict the new peer
+    if (this.activePeers.get(peer.id) && this.activePeers.get(peer.id) !== peer) {
+      return;
+    }
+    this.activePeers.delete(peer.id);
+
     this._broadcastToVisiblePeers(peer, {
       type: 'peer-left',
       peerId: peer.id,
@@ -354,19 +402,13 @@ export default class LoSWsServer {
     this.roomManager.leaveAllSecretRooms(peer);
     this.roomManager.leavePublicRoom(peer);
 
-    const timer = this.keepAliveTimers.get(peer.id);
-    if (timer) {
-      clearTimeout(timer);
-      this.keepAliveTimers.delete(peer.id);
-    }
-
     if (this.conf.debugMode) {
       console.log(`[Peer Disconnected] ID: ${peer.id}`);
     }
   }
 
   _resetKeepAlive(peer) {
-    const existing = this.keepAliveTimers.get(peer.id);
+    const existing = this.keepAliveTimers.get(peer);
     if (existing) clearTimeout(existing);
 
     const timer = setTimeout(() => {
@@ -378,7 +420,7 @@ export default class LoSWsServer {
       }
     }, this.conf.connectionTimeout);
 
-    this.keepAliveTimers.set(peer.id, timer);
+    this.keepAliveTimers.set(peer, timer);
   }
 
   _startHeartbeatCheck() {

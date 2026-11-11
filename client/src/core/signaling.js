@@ -11,6 +11,31 @@ export class SignalingClient {
     this.selfName = null;
     this.rtcConfig = CONFIG.DEFAULT_RTC_CONFIG;
     this.wsFallbackEnabled = true;
+    this.pendingMessages = [];
+
+    this._bindLifecycleEvents();
+  }
+
+  _bindLifecycleEvents() {
+    if (typeof window === 'undefined') return;
+
+    const ensureConnected = () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      if (!this.ws || this.ws.readyState === WebSocket.CLOSED || this.ws.readyState === WebSocket.CLOSING) {
+        if (this.reconnectTimer) {
+          clearTimeout(this.reconnectTimer);
+          this.reconnectTimer = null;
+        }
+        this.reconnectAttempts = 0;
+        this.connect();
+      }
+    };
+
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) ensureConnected();
+    });
+    window.addEventListener('pageshow', ensureConnected);
+    window.addEventListener('online', ensureConnected);
   }
 
   connect() {
@@ -44,6 +69,7 @@ export class SignalingClient {
       this.connected = true;
       this.reconnectAttempts = 0;
       events.emit('signaling-connected');
+      this._flushPendingMessages();
     };
 
     this.ws.onmessage = (event) => {
@@ -67,7 +93,17 @@ export class SignalingClient {
   }
 
   send(data) {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return false;
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      if (data && data.type !== 'pong') {
+        if (this.pendingMessages.length < 500) {
+          this.pendingMessages.push(data);
+        }
+        if (!this.ws || this.ws.readyState === WebSocket.CLOSED || this.ws.readyState === WebSocket.CLOSING) {
+          this.connect();
+        }
+      }
+      return false;
+    }
     try {
       this.ws.send(JSON.stringify(data));
       return true;
@@ -75,6 +111,22 @@ export class SignalingClient {
       console.error('[Signaling Send Error]', err);
       return false;
     }
+  }
+
+  _flushPendingMessages() {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN || this.pendingMessages.length === 0) return;
+    const queue = this.pendingMessages.splice(0, this.pendingMessages.length);
+    for (const msg of queue) {
+      try {
+        this.ws.send(JSON.stringify(msg));
+      } catch (err) {
+        console.error('[Signaling Flush Error]', err);
+      }
+    }
+  }
+
+  get bufferedAmount() {
+    return this.ws && this.ws.readyState === WebSocket.OPEN ? this.ws.bufferedAmount : 0;
   }
 
   _handleMessage(message) {
@@ -147,6 +199,7 @@ export class SignalingClient {
       case 'progress':
       case 'files-transfer-response':
       case 'file-transfer-complete':
+      case 'transfer-cancel':
       case 'text':
       case 'ws-chunk':
         events.emit(`relay-${message.type}`, message);

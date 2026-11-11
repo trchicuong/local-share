@@ -20,15 +20,21 @@ export class FileStreamReader {
     this.partitionSize = 0;
     this.partitionIndex = 0;
     this.aborted = false;
-    this.isPaused = false;
+    this.isPaused = true;
   }
 
   start() {
+    if (this.file.size === 0) {
+      this.onProgress(0, 0);
+      this.onComplete();
+      return;
+    }
+    this.isPaused = true;
     this.nextPartition();
   }
 
   nextPartition() {
-    if (this.aborted || this.isEOF()) return;
+    if (this.aborted || !this.isPaused || this.isEOF()) return;
     this.partitionSize = 0;
     this.isPaused = false;
     this._readNextChunk();
@@ -58,10 +64,16 @@ export class FileStreamReader {
       if (this.aborted) return;
 
       const chunkLength = arrayBuffer.byteLength;
+      if (chunkLength === 0 && this.file.size > 0) {
+        throw new Error('File stream returned 0 bytes unexpectedly');
+      }
+
       this.offset += chunkLength;
       this.partitionSize += chunkLength;
 
-      this.onChunk(arrayBuffer);
+      await this.onChunk(arrayBuffer);
+      if (this.aborted) return;
+
       this.onProgress(this.offset, this.file.size);
 
       // If entire file has been read, trigger completion immediately

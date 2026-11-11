@@ -49,7 +49,10 @@ export default class Peer {
     this.peerIdHash = hashPeerId(this.id);
   }
 
-  rateLimitReached(maxRate = 20, windowMs = 5000) {
+  rateLimitReached(maxRate = 100, windowMs = 5000) {
+    if (!this.conf?.rateLimit) {
+      return false;
+    }
     if (this.requestRate >= maxRate) {
       return true;
     }

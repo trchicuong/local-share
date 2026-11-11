@@ -16,8 +16,19 @@ export class LoSPeerConnection extends EventEmitter {
     this.makingOffer = false;
     this.ignoreOffer = false;
     this.pendingCandidates = [];
+    this._signalQueue = Promise.resolve();
 
     this._initPeerConnection();
+  }
+
+  isHealthy() {
+    if (!this.pc) return false;
+    const cs = this.pc.connectionState;
+    const ics = this.pc.iceConnectionState;
+    if (cs === 'failed' || cs === 'closed' || ics === 'failed' || ics === 'closed') {
+      return false;
+    }
+    return true;
   }
 
   _initPeerConnection() {
@@ -34,10 +45,22 @@ export class LoSPeerConnection extends EventEmitter {
     };
 
     this.pc.onconnectionstatechange = () => {
+      if (!this.pc) return;
       if (this.pc.connectionState === 'connected') {
         this.emit('connected');
-      } else if (this.pc.connectionState === 'disconnected' || this.pc.connectionState === 'failed') {
-        this.emit('disconnected');
+      } else if (
+        this.pc.connectionState === 'disconnected' ||
+        this.pc.connectionState === 'failed' ||
+        this.pc.connectionState === 'closed'
+      ) {
+        this.emit('disconnected', this.pc.connectionState);
+      }
+    };
+
+    this.pc.oniceconnectionstatechange = () => {
+      if (!this.pc) return;
+      if (this.pc.iceConnectionState === 'failed' || this.pc.iceConnectionState === 'closed') {
+        this.emit('disconnected', this.pc.iceConnectionState);
       }
     };
 
@@ -55,11 +78,21 @@ export class LoSPeerConnection extends EventEmitter {
   }
 
   createDataChannel(label = 'los-data') {
-    if (this.dc) return this.dc;
-    const channel = this.pc.createDataChannel(label, {
-      ordered: true,
-    });
-    this._setupDataChannel(channel);
+    if (this.dc && this.dc.readyState !== 'closing' && this.dc.readyState !== 'closed') {
+      return this.dc;
+    }
+    if (!this.isHealthy()) {
+      this.close();
+      this._initPeerConnection();
+    }
+    try {
+      const channel = this.pc.createDataChannel(label, {
+        ordered: true,
+      });
+      this._setupDataChannel(channel);
+    } catch (err) {
+      console.warn('[Create DataChannel Error]', err);
+    }
     return this.dc;
   }
 
@@ -84,7 +117,16 @@ export class LoSPeerConnection extends EventEmitter {
     };
   }
 
-  async handleSignal(signal) {
+  handleSignal(signal) {
+    this._signalQueue = this._signalQueue
+      .then(() => this._processSignal(signal))
+      .catch((err) => {
+        console.error('[Signal Queue Error]', err);
+      });
+    return this._signalQueue;
+  }
+
+  async _processSignal(signal) {
     if (!this.pc) return;
 
     try {
@@ -99,12 +141,25 @@ export class LoSPeerConnection extends EventEmitter {
           return;
         }
 
-        await this.pc.setRemoteDescription(description);
+        if (offerCollision && this.isPolite) {
+          await Promise.all([
+            this.pc.setLocalDescription({ type: 'rollback' }),
+            this.pc.setRemoteDescription(description),
+          ]);
+        } else {
+          await this.pc.setRemoteDescription(description);
+        }
 
         // Process queued ICE candidates
         while (this.pendingCandidates.length > 0) {
           const candidate = this.pendingCandidates.shift();
-          await this.pc.addIceCandidate(candidate);
+          try {
+            await this.pc.addIceCandidate(candidate);
+          } catch (err) {
+            if (!this.ignoreOffer) {
+              console.warn('[Queued ICE Candidate Error]', err);
+            }
+          }
         }
 
         if (description.type === 'offer') {
@@ -131,8 +186,13 @@ export class LoSPeerConnection extends EventEmitter {
 
   send(data) {
     if (this.dc && this.dc.readyState === 'open') {
-      this.dc.send(data);
-      return true;
+      try {
+        this.dc.send(data);
+        return true;
+      } catch (err) {
+        console.warn('[DataChannel Send Error]', err);
+        return false;
+      }
     }
     return false;
   }
