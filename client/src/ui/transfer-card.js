@@ -46,6 +46,10 @@ export class TransferCard {
       this.hide();
     });
 
+    events.on('transfer-declined', () => {
+      this.hide();
+    });
+
     events.on('transfer-error', () => {
       this.hide();
     });
@@ -101,7 +105,12 @@ export class TransferCard {
     `;
 
     document.getElementById('hud-cancel')?.addEventListener('click', () => {
-      transferManager.cancelActiveTransfer();
+      if (transferManager.activeTransfer) {
+        transferManager.cancelActiveTransfer();
+      } else {
+        this.hide();
+        events.emit('transfer-cancelled');
+      }
     });
   }
 

@@ -116,9 +116,81 @@
 
 .modal-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 0.6rem;
   margin-top: 1.25rem;
+}
+
+/* =========================================================
+   Incoming Transfer Confirmation Modal (ReceiveModal)
+   ========================================================= */
+.receive-card {
+  max-width: 460px;
+}
+
+.receive-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.receive-from {
+  font-size: 0.92rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.receive-from strong {
+  color: #ffffff;
+}
+
+.file-badge {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  background: #0e0e11;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 0.75rem;
+}
+
+.file-name {
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: #f4f4f5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1;
+}
+
+.file-size {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--primary);
+  flex-shrink: 0;
+}
+
+.stream-tip {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
+.receive-card .modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.receive-card .modal-actions .btn {
+  flex: 1 1 auto;
+  padding: 0.55rem 0.85rem;
 }
 
 /* =========================================================
@@ -488,6 +560,11 @@
 }
 
 /* Forms & Textarea */
+textarea, input {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 textarea {
   width: 100%;
   background: #09090b;
@@ -1477,6 +1554,31 @@ textarea:focus, input:focus {
 
 .about-footer {
   margin-top: 1rem;
+}
+
+@media (max-width: 520px) {
+  .receive-card .modal-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .receive-card .modal-actions .btn {
+    flex: 1 1 calc(50% - 0.25rem);
+    min-width: 115px;
+    max-width: 100%;
+    padding: 0.62rem 0.65rem;
+    font-size: 0.84rem;
+    justify-content: center;
+    text-align: center;
+  }
+  .receive-card .modal-actions #receive-accept:nth-child(3) {
+    flex: 1 1 100%;
+  }
+  .preview-actions .btn {
+    flex: 1 1 auto;
+    min-width: 90px;
+    justify-content: center;
+  }
 }
 
 @media (max-width: 480px) {

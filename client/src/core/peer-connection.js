@@ -25,10 +25,42 @@ export class LoSPeerConnection extends EventEmitter {
     if (!this.pc) return false;
     const cs = this.pc.connectionState;
     const ics = this.pc.iceConnectionState;
-    if (cs === 'failed' || cs === 'closed' || ics === 'failed' || ics === 'closed') {
+    if (
+      cs === 'disconnected' ||
+      cs === 'failed' ||
+      cs === 'closed' ||
+      ics === 'disconnected' ||
+      ics === 'failed' ||
+      ics === 'closed'
+    ) {
       return false;
     }
     return true;
+  }
+
+  isReady() {
+    return Boolean(this.isHealthy() && this.dc && this.dc.readyState === 'open');
+  }
+
+  _resetConnection() {
+    if (this.dc) {
+      this.dc.onopen = null;
+      this.dc.onclose = null;
+      this.dc.onerror = null;
+      this.dc.onmessage = null;
+    }
+    if (this.pc) {
+      this.pc.onicecandidate = null;
+      this.pc.ondatachannel = null;
+      this.pc.onconnectionstatechange = null;
+      this.pc.oniceconnectionstatechange = null;
+      this.pc.onnegotiationneeded = null;
+    }
+    this.makingOffer = false;
+    this.ignoreOffer = false;
+    this.pendingCandidates = [];
+    this.close();
+    this._initPeerConnection();
   }
 
   _initPeerConnection() {
@@ -82,8 +114,7 @@ export class LoSPeerConnection extends EventEmitter {
       return this.dc;
     }
     if (!this.isHealthy()) {
-      this.close();
-      this._initPeerConnection();
+      this._resetConnection();
     }
     try {
       const channel = this.pc.createDataChannel(label, {
@@ -132,6 +163,14 @@ export class LoSPeerConnection extends EventEmitter {
     try {
       if (signal.description) {
         const description = signal.description;
+        if (
+          description.type === 'offer' &&
+          this.pc.currentRemoteDescription &&
+          this.pc.signalingState === 'stable' &&
+          !this.makingOffer
+        ) {
+          this._resetConnection();
+        }
         const offerCollision =
           description.type === 'offer' &&
           (this.makingOffer || this.pc.signalingState !== 'stable');

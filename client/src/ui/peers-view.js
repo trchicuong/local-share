@@ -89,6 +89,7 @@ export class PeersView {
       this.peers.set(peer.id, {
         ...existing,
         ...peer,
+        name: { ...(existing.name || {}), ...(peer.name || {}) },
         rooms: updatedRooms,
         roomType: primaryType,
         secret: secret,
@@ -102,7 +103,12 @@ export class PeersView {
 
     events.on('peer-updated', (peer) => {
       if (this.peers.has(peer.id)) {
-        this.peers.set(peer.id, { ...this.peers.get(peer.id), ...peer });
+        const existing = this.peers.get(peer.id);
+        this.peers.set(peer.id, {
+          ...existing,
+          ...peer,
+          name: { ...(existing.name || {}), ...(peer.name || {}) },
+        });
         this.render();
         events.emit('peers-state-updated', Array.from(this.peers.values()));
       }
@@ -222,12 +228,28 @@ export class PeersView {
     }
 
     const total = peers.length;
-    const startAngle = (155 * Math.PI) / 180;
-    const endAngle = (25 * Math.PI) / 180;
+    const isMobile = width < 600;
+
+    let startDeg = 90;
+    let endDeg = 90;
+    if (total === 2) {
+      startDeg = isMobile ? 122 : 130;
+      endDeg = isMobile ? 58 : 50;
+    } else if (total === 3) {
+      startDeg = isMobile ? 136 : 142;
+      endDeg = isMobile ? 44 : 38;
+    } else if (total >= 4) {
+      startDeg = isMobile ? 146 : 152;
+      endDeg = isMobile ? 34 : 28;
+    }
+
+    const startAngle = (startDeg * Math.PI) / 180;
+    const endAngle = (endDeg * Math.PI) / 180;
     const angleStep = total > 1 ? (startAngle - endAngle) / (total - 1) : 0;
 
-    const isMobile = width < 600;
-    const nodeMargin = isMobile ? 48 : 60;
+    const nodeMargin = isMobile ? 56 : 64;
+    const topSafeMargin = isMobile ? 56 : 70;
+    const bottomSafeMargin = isMobile ? 76 : 84;
     const maxVertical = Math.max(120, centerY - (isMobile ? 70 : 90));
     const minRadius = isMobile ? 125 : 165;
 
@@ -241,6 +263,7 @@ export class PeersView {
         Math.abs(cosA) > 0.08 ? (width / 2 - nodeMargin) / Math.abs(cosA) : maxVertical;
 
       const maxAllowedRadius = Math.min(maxVertical, maxHorizontalRadius);
+      const stagger = total >= 3 && i % 2 !== 0 ? (isMobile ? 15 : 28) : 0;
 
       // Position peer elegantly in the middle-upper field of radar waves
       const idealRadius =
@@ -248,13 +271,21 @@ export class PeersView {
           ? Math.min(maxAllowedRadius * 0.72, isMobile ? 220 : 310)
           : Math.min(
               maxAllowedRadius,
-              Math.max(minRadius, maxVertical * 0.65 + (i % 2 === 0 ? 0 : isMobile ? 15 : 28))
+              Math.max(minRadius, maxVertical * 0.65 + stagger)
             );
 
       const radius = Math.max(Math.min(minRadius, maxAllowedRadius), Math.min(maxAllowedRadius, idealRadius));
 
-      const x = centerX + radius * cosA;
-      const y = centerY - radius * sinA;
+      const rawX = centerX + radius * cosA;
+      const rawY = centerY - radius * sinA;
+
+      const minX = Math.min(nodeMargin, width / 2);
+      const maxX = Math.max(minX, width - nodeMargin);
+      const minY = Math.min(topSafeMargin, height / 2);
+      const maxY = Math.max(minY, height - bottomSafeMargin);
+
+      const x = Math.max(minX, Math.min(maxX, rawX));
+      const y = Math.max(minY, Math.min(maxY, rawY));
 
       const el = this._createPeerNode(peer);
       el.style.left = `${x}px`;
@@ -313,7 +344,7 @@ export class PeersView {
         ${barsHtml}
       </div>
       <div class="peer-name" title="${peer.name?.displayName || t('peers.nearbyDevice')}">${peer.name?.displayName || t('peers.nearbyDevice')}</div>
-      <div class="peer-sub">${peer.name?.deviceName || t('peers.ready')}</div>
+      <div class="peer-sub" title="${peer.name?.deviceName || t('peers.ready')}">${peer.name?.deviceName || t('peers.ready')}</div>
     `;
 
     const prewarmConnection = () => {
@@ -324,8 +355,16 @@ export class PeersView {
     node.addEventListener('pointerdown', prewarmConnection, { passive: true });
     node.addEventListener('dragenter', prewarmConnection, { passive: true });
 
+    // Touch long-press support for mobile devices
+    let touchTimer = null;
+    let longPressTriggered = false;
+
     // Click: choose file to send
     node.addEventListener('click', () => {
+      if (longPressTriggered) {
+        longPressTriggered = false;
+        return;
+      }
       this.selectedPeerId = peer.id;
       // Pre-warm WebRTC connection so DataChannel is ready while user chooses files
       prewarmConnection();
@@ -339,20 +378,16 @@ export class PeersView {
       events.emit('open-text-modal', peer);
     });
 
-    // Touch long-press support for mobile devices
-    let touchTimer = null;
-    let touchMoved = false;
-
     node.addEventListener('touchstart', () => {
-      touchMoved = false;
+      longPressTriggered = false;
       touchTimer = setTimeout(() => {
         touchTimer = null;
+        longPressTriggered = true;
         events.emit('open-text-modal', peer);
       }, 550);
     }, { passive: true });
 
     node.addEventListener('touchmove', () => {
-      touchMoved = true;
       if (touchTimer) {
         clearTimeout(touchTimer);
         touchTimer = null;

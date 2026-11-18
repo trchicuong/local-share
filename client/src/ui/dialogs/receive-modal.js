@@ -6,6 +6,7 @@ export class ReceiveModal {
   constructor(modalElement) {
     this.modal = modalElement;
     this.activeReq = null;
+    this.isOpen = false;
 
     events.on('incoming-transfer-request', (req) => {
       this.activeReq = req;
@@ -13,7 +14,7 @@ export class ReceiveModal {
     });
 
     events.on('language-changed', () => {
-      if (this.activeReq && !this.modal.classList.contains('hidden')) {
+      if (this.activeReq && this.isOpen && !this.modal.classList.contains('hidden')) {
         this.show(this.activeReq);
       }
     });
@@ -21,14 +22,38 @@ export class ReceiveModal {
     events.on('peer-updated', (peer) => {
       if (this.activeReq && this.activeReq.sender?.id === peer.id && peer.name?.displayName) {
         this.activeReq.sender.displayName = peer.name.displayName;
-        if (!this.modal.classList.contains('hidden')) {
+        if (this.isOpen && !this.modal.classList.contains('hidden')) {
           this.show(this.activeReq);
         }
+      }
+    });
+
+    events.on('transfer-cancelled', () => {
+      if (this.isOpen && this.activeReq) {
+        this.close();
+      }
+    });
+
+    events.on('peer-left', (peerId) => {
+      if (this.isOpen && this.activeReq && this.activeReq.sender?.id === peerId) {
+        const stillVisible = window.losApp?.peersView?.peers?.has(peerId);
+        if (!stillVisible) {
+          this.close();
+        }
+      }
+    });
+
+    events.on('modal-opened', (modal) => {
+      if (modal !== this) {
+        this.isOpen = false;
+        this.activeReq = null;
       }
     });
   }
 
   show(req) {
+    this.isOpen = true;
+    events.emit('modal-opened', this);
     const supportsPicker = typeof window.showSaveFilePicker === 'function';
     const isMulti = (req.filesCount || 1) > 1;
     const displayName = isMulti
@@ -70,6 +95,7 @@ export class ReceiveModal {
     });
 
     document.getElementById('receive-save-disk')?.addEventListener('click', async () => {
+      const currentSenderName = this.activeReq?.sender?.displayName || req.sender?.displayName;
       let handle = null;
       try {
         handle = await window.showSaveFilePicker({
@@ -79,16 +105,18 @@ export class ReceiveModal {
         // User cancelled picker -> proceed with standard download
       }
       this.close();
-      await req.accept(handle);
+      await req.accept(handle, currentSenderName);
     });
 
     document.getElementById('receive-accept')?.addEventListener('click', async () => {
+      const currentSenderName = this.activeReq?.sender?.displayName || req.sender?.displayName;
       this.close();
-      await req.accept(null);
+      await req.accept(null, currentSenderName);
     });
   }
 
   close() {
+    this.isOpen = false;
     this.activeReq = null;
     this.modal.classList.add('hidden');
     this.modal.innerHTML = '';

@@ -4,20 +4,31 @@ import { events } from '../../core/events.js';
 import { storage } from '../../utils/storage.js';
 import { SegmentedInput } from '../segmented-input.js';
 import { t, getLanguage } from '../../utils/i18n.js';
+import { copyToClipboard } from '../../utils/formatters.js';
 
 export class PairModal {
   constructor(modalElement) {
     this.modal = modalElement;
     this.currentPin = null;
     this.segmentedInput = null;
+    this.isOpen = false;
 
     this._bindEvents();
   }
 
   _bindEvents() {
+    events.on('modal-opened', (modal) => {
+      if (modal !== this) {
+        this.isOpen = false;
+        this.segmentedInput = null;
+      }
+    });
+
     events.on('pair-code', (data) => {
       this.currentPin = data.pin;
-      this._renderPairCode(data.pin);
+      if (this.isOpen) {
+        this._renderPairCode(data.pin);
+      }
     });
 
     events.on('pair-success', (data) => {
@@ -30,7 +41,9 @@ export class PairModal {
         deviceType: pairedPeer.name?.deviceType || 'desktop',
         autoAccept: false,
       });
-      this.close();
+      if (this.isOpen) {
+        this.close();
+      }
       events.emit('pair-updated');
       events.emit('notify', {
         title: t('toast.pairSuccess'),
@@ -51,6 +64,8 @@ export class PairModal {
   }
 
   open() {
+    this.isOpen = true;
+    events.emit('modal-opened', this);
     this.modal.classList.remove('hidden');
     this.modal.innerHTML = `
       <div class="modal-backdrop"></div>
@@ -127,16 +142,17 @@ export class PairModal {
     });
 
     // Copy Link action
-    document.getElementById('copy-pair-link-btn')?.addEventListener('click', () => {
+    document.getElementById('copy-pair-link-btn')?.addEventListener('click', async () => {
       if (this.currentPin) {
         const url = `${window.location.origin}?pair=${this.currentPin}`;
-        navigator.clipboard?.writeText(url).then(() => {
+        const ok = await copyToClipboard(url);
+        if (ok) {
           events.emit('notify', {
             title: t('pair.copyLink'),
             message: t('pair.linkCopied'),
             type: 'success',
           });
-        });
+        }
       }
     });
 
@@ -190,6 +206,7 @@ export class PairModal {
   }
 
   close() {
+    this.isOpen = false;
     this.modal.classList.add('hidden');
     this.modal.innerHTML = '';
     this.segmentedInput = null;

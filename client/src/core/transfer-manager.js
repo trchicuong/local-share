@@ -12,6 +12,7 @@ export class TransferManager {
   constructor() {
     this.connections = new Map(); // peerId -> LoSPeerConnection
     this.activeTransfer = null; // Current active sender or receiver session
+    this.pendingIncomingRequest = null; // Pending incoming confirmation before accept/decline
 
     this._bindSignalingEvents();
   }
@@ -33,7 +34,30 @@ export class TransferManager {
     events.on('relay-transfer-cancel', (msg) => this._onRemoteTransferCancel(msg));
     events.on('relay-ws-chunk', (msg) => this._onWsChunkReceived(msg));
     events.on('relay-text', (msg) => {
-      events.emit('text-received', msg.sender, msg.text);
+      const senderId = msg.sender?.id || msg.from;
+      const knownPeer = senderId ? window.losApp?.peersView?.peers?.get(senderId) : null;
+      const sender = {
+        ...(knownPeer || {}),
+        ...(msg.sender || {}),
+        id: senderId,
+        name: {
+          ...(knownPeer?.name || {}),
+          ...(msg.sender?.name || {}),
+          ...(msg.senderName ? { displayName: msg.senderName } : {}),
+        },
+      };
+      events.emit('text-received', sender, msg.text);
+    });
+
+    // Keep active/pending sender names synchronized in real time
+    events.on('peer-updated', (peer) => {
+      if (!peer?.id || !peer.name?.displayName) return;
+      if (this.activeTransfer && this.activeTransfer.type === 'receive' && this.activeTransfer.senderId === peer.id) {
+        this.activeTransfer.senderName = peer.name.displayName;
+      }
+      if (this.pendingIncomingRequest && this.pendingIncomingRequest.senderId === peer.id) {
+        this.pendingIncomingRequest.senderName = peer.name.displayName;
+      }
     });
 
     // Broadcast self display name updates over open P2P channels for sub-5ms real-time sync
@@ -47,20 +71,95 @@ export class TransferManager {
         },
       };
       for (const [, conn] of this.connections) {
-        if (conn.dc && conn.dc.readyState === 'open') {
+        if (conn.isReady()) {
           conn.sendJSON(updateMsg);
         }
       }
     });
 
-    // Cleanup on peer leave
-    events.on('peer-left', (peerId) => {
-      const conn = this.connections.get(peerId);
-      if (conn) {
-        conn.close();
-        this.connections.delete(peerId);
+    // Sync session resets and cleanup when peers join/reload/leave
+    events.on('peers-list', (peerList) => {
+      const activeIds = new Set();
+      for (const p of peerList) {
+        activeIds.add(p.id);
+        const conn = this.connections.get(p.id);
+        if (conn) {
+          if (p.sessionId && conn.remoteSessionId && conn.remoteSessionId !== p.sessionId) {
+            conn.close();
+            this.connections.delete(p.id);
+            this._handlePeerDisconnected(p.id);
+          } else if (p.sessionId && !conn.remoteSessionId) {
+            conn.remoteSessionId = p.sessionId;
+          }
+        }
+      }
+      for (const [peerId, conn] of Array.from(this.connections.entries())) {
+        if (!activeIds.has(peerId)) {
+          conn.close();
+          this.connections.delete(peerId);
+          this._handlePeerDisconnected(peerId);
+        }
       }
     });
+
+    events.on('peer-joined', (peer) => {
+      if (!peer?.id) return;
+      const conn = this.connections.get(peer.id);
+      if (conn) {
+        if (peer.sessionId && conn.remoteSessionId && conn.remoteSessionId !== peer.sessionId) {
+          conn.close();
+          this.connections.delete(peer.id);
+          this._handlePeerDisconnected(peer.id);
+        } else if (peer.sessionId && !conn.remoteSessionId) {
+          conn.remoteSessionId = peer.sessionId;
+        }
+      }
+    });
+
+    events.on('peers-state-updated', (peerList) => {
+      const activeIds = new Set((peerList || []).map((p) => p.id));
+      for (const [peerId, conn] of Array.from(this.connections.entries())) {
+        if (!activeIds.has(peerId)) {
+          conn.close();
+          this.connections.delete(peerId);
+          this._handlePeerDisconnected(peerId);
+        }
+      }
+    });
+
+    // Cleanup on full peer disconnect
+    events.on('peer-left', (peerId, roomType) => {
+      if (!roomType) {
+        const conn = this.connections.get(peerId);
+        if (conn) {
+          conn.close();
+          this.connections.delete(peerId);
+        }
+        this._handlePeerDisconnected(peerId);
+      }
+    });
+  }
+
+  _handlePeerDisconnected(peerId) {
+    if (this.pendingIncomingRequest && this.pendingIncomingRequest.senderId === peerId) {
+      this.pendingIncomingRequest.cancelled = true;
+      this.pendingIncomingRequest = null;
+      noSleep.disable();
+      events.emit('transfer-cancelled', { remote: true });
+    }
+    if (this.activeTransfer) {
+      const activePeerId =
+        this.activeTransfer.type === 'send'
+          ? this.activeTransfer.recipientId
+          : this.activeTransfer.senderId;
+      if (activePeerId === peerId) {
+        this._clearPartitionAckWatchdog(this.activeTransfer);
+        if (this.activeTransfer.reader) this.activeTransfer.reader.abort();
+        if (this.activeTransfer.writer) this.activeTransfer.writer.abort();
+        this._endActiveTransfer();
+        events.emit('transfer-error', new Error('Peer disconnected'));
+      }
+    }
   }
 
   getOrCreateConnection(peerId) {
@@ -76,6 +175,8 @@ export class TransferManager {
     // Polite peer determination: lexicographical comparison
     const isPolite = signaling.selfId ? signaling.selfId < peerId : true;
     const conn = new LoSPeerConnection(peerId, isPolite, signaling.rtcConfig);
+    const knownPeer = window.losApp?.peersView?.peers?.get(peerId);
+    conn.remoteSessionId = knownPeer?.sessionId || null;
 
     conn.on('open', () => {
       events.emit('peer-connected-p2p', peerId);
@@ -175,9 +276,19 @@ export class TransferManager {
         }
         break;
 
-      case 'text':
-        events.emit('text-received', { id: peerId }, msg.text);
+      case 'text': {
+        const knownPeer = window.losApp?.peersView?.peers?.get(peerId);
+        const sender = {
+          ...(knownPeer || {}),
+          id: peerId,
+          name: {
+            ...(knownPeer?.name || {}),
+            ...(msg.senderName ? { displayName: msg.senderName } : {}),
+          },
+        };
+        events.emit('text-received', sender, msg.text);
         break;
+      }
 
       default:
         break;
@@ -196,7 +307,7 @@ export class TransferManager {
 
   _sendControl(peerId, type, payload, preferRelay = false) {
     const conn = this.connections.get(peerId);
-    if (!preferRelay && conn && conn.dc && conn.dc.readyState === 'open') {
+    if (!preferRelay && conn && conn.isReady()) {
       if (conn.sendJSON(payload)) {
         return false; // Sent via P2P DataChannel (not relay)
       }
@@ -262,7 +373,7 @@ export class TransferManager {
     conn.createDataChannel('los-data');
 
     const totalSize = fileArray.reduce((acc, f) => acc + (f.size || 0), 0);
-    const isWebRTCOpen = Boolean(conn.dc && conn.dc.readyState === 'open');
+    const isWebRTCOpen = Boolean(conn.isReady());
 
     const session = {
       type: 'send',
@@ -316,7 +427,7 @@ export class TransferManager {
     }
 
     const conn = this.connections.get(this.activeTransfer.recipientId);
-    const isWebRTCOpen = Boolean(conn && conn.dc && conn.dc.readyState === 'open');
+    const isWebRTCOpen = Boolean(conn && conn.isReady());
 
     if (typeof msg.useRelay === 'boolean') {
       this.activeTransfer.useRelay = msg.useRelay || !isWebRTCOpen;
@@ -363,7 +474,7 @@ export class TransferManager {
 
     const file = session.currentFile;
     const conn = this.connections.get(session.recipientId);
-    const isWebRTCOpen = Boolean(conn && conn.dc && conn.dc.readyState === 'open');
+    const isWebRTCOpen = Boolean(conn && conn.isReady());
     if (!isWebRTCOpen || isRetry) {
       session.useRelay = true;
     }
@@ -544,6 +655,13 @@ export class TransferManager {
     }
 
     // Trigger UI confirmation modal
+    const reqState = {
+      senderId,
+      senderName: senderDisplayName,
+      cancelled: false,
+    };
+    this.pendingIncomingRequest = reqState;
+
     events.emit('incoming-transfer-request', {
       sender: {
         id: senderId,
@@ -554,14 +672,18 @@ export class TransferManager {
       filesCount: msg.filesCount,
       fileName: msg.firstFileName,
       totalSize: msg.totalSize,
-      accept: (fileHandle = null) => this.acceptTransfer(senderId, msg, fileHandle, senderDisplayName),
+      accept: (fileHandle = null, updatedSenderName = null) => {
+        if (reqState.cancelled) return;
+        return this.acceptTransfer(senderId, msg, fileHandle, updatedSenderName || reqState.senderName);
+      },
       decline: () => this.declineTransfer(senderId),
     });
   }
 
   async acceptTransfer(senderId, msg, fileHandle = null, senderName = '') {
+    this.pendingIncomingRequest = null;
     const conn = this.connections.get(senderId);
-    const isWebRTCOpen = Boolean(conn && conn.dc && conn.dc.readyState === 'open');
+    const isWebRTCOpen = Boolean(conn && conn.isReady());
     const useRelay = !isWebRTCOpen;
 
     const session = {
@@ -603,6 +725,7 @@ export class TransferManager {
   }
 
   declineTransfer(senderId) {
+    this.pendingIncomingRequest = null;
     const responseMsg = {
       type: 'files-transfer-response',
       accepted: false,
@@ -629,8 +752,10 @@ export class TransferManager {
     // Ensure session.writer is null while new writer initializes so incoming chunks queue into pendingChunks
     session.writer = null;
 
+    const activeFileHandle = (session.filesCount || 1) === 1 ? session.fileHandle : null;
+
     const writer = new FileStreamWriter(msg, {
-      fileHandle: session.fileHandle,
+      fileHandle: activeFileHandle,
       onProgress: (received, total, bytesSinceLastAck) => {
         if (this.activeTransfer !== session) return;
         const currentBatchBytes = (session.totalBytesReceived || 0) + received;
@@ -757,13 +882,16 @@ export class TransferManager {
   sendText(recipientId, text) {
     if (!text) return;
     const conn = this.getOrCreateConnection(recipientId);
-    const msg = { type: 'text', text };
+    const msg = {
+      type: 'text',
+      text,
+      senderName: signaling.selfName || t('peers.nearbyPeer'),
+    };
 
-    if (conn.dc && conn.dc.readyState === 'open') {
-      conn.sendJSON(msg);
-    } else {
-      signaling.sendRelay('text', recipientId, msg);
+    if (conn.isReady()) {
+      if (conn.sendJSON(msg)) return;
     }
+    signaling.sendRelay('text', recipientId, msg);
   }
 
   cancelActiveTransfer() {
@@ -785,14 +913,24 @@ export class TransferManager {
   }
 
   _onRemoteTransferCancel() {
+    if (!this.activeTransfer && this.pendingIncomingRequest) {
+      this.pendingIncomingRequest.cancelled = true;
+      this.pendingIncomingRequest = null;
+      noSleep.disable();
+      events.emit('transfer-cancelled', { remote: true });
+      return;
+    }
     if (!this.activeTransfer) return;
     if (this.activeTransfer.reader) this.activeTransfer.reader.abort();
     if (this.activeTransfer.writer) this.activeTransfer.writer.abort();
     this._endActiveTransfer();
-    events.emit('transfer-cancelled');
+    events.emit('transfer-cancelled', { remote: true });
   }
 
   _endActiveTransfer() {
+    if (this.activeTransfer) {
+      this._clearPartitionAckWatchdog(this.activeTransfer);
+    }
     this.activeTransfer = null;
     noSleep.disable();
   }

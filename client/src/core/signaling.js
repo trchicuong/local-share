@@ -9,6 +9,10 @@ export class SignalingClient {
     this.reconnectTimer = null;
     this.selfId = null;
     this.selfName = null;
+    this.sessionId =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     this.rtcConfig = CONFIG.DEFAULT_RTC_CONFIG;
     this.wsFallbackEnabled = true;
     this.pendingMessages = [];
@@ -46,16 +50,21 @@ export class SignalingClient {
     let wsUrl = CONFIG.getSignalingUrl();
     const savedPeerId = sessionStorage.getItem('los_peer_id') || localStorage.getItem('los_peer_id');
     const savedPeerIdHash = sessionStorage.getItem('los_peer_id_hash') || localStorage.getItem('los_peer_id_hash');
+    const savedDisplayName = localStorage.getItem('los_display_name');
 
-    if (savedPeerId && savedPeerIdHash) {
-      try {
-        const url = new URL(wsUrl);
+    try {
+      const url = new URL(wsUrl);
+      url.searchParams.set('session_id', this.sessionId);
+      if (savedPeerId && savedPeerIdHash) {
         url.searchParams.set('peer_id', savedPeerId);
         url.searchParams.set('peer_id_hash', savedPeerIdHash);
-        wsUrl = url.toString();
-      } catch (e) {
-        // Fallback to basic url if URL parse fails
       }
+      if (savedDisplayName && savedDisplayName.trim()) {
+        url.searchParams.set('display_name', savedDisplayName.trim().substring(0, 40));
+      }
+      wsUrl = url.toString();
+    } catch (e) {
+      // Fallback to basic url if URL parse fails
     }
 
     try {

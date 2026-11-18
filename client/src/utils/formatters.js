@@ -38,3 +38,50 @@ export function sanitizeFilename(name) {
     .substring(0, 255) || 'unnamed_file';
 }
 
+export async function copyToClipboard(text) {
+  const value = String(text ?? '');
+  if (!value) return false;
+
+  if (
+    typeof navigator !== 'undefined' &&
+    navigator.clipboard &&
+    typeof navigator.clipboard.writeText === 'function' &&
+    typeof window !== 'undefined' &&
+    window.isSecureContext
+  ) {
+    try {
+      await navigator.clipboard.writeText(value);
+      return true;
+    } catch (_) {
+      // Fall back to execCommand below
+    }
+  }
+
+  if (typeof document === 'undefined' || !document.body) return false;
+
+  const ta = document.createElement('textarea');
+  ta.value = value;
+  ta.setAttribute('readonly', '');
+  ta.style.position = 'fixed';
+  ta.style.top = '0';
+  ta.style.left = '-9999px';
+  ta.style.opacity = '0';
+  ta.style.fontSize = '16px';
+  ta.style.userSelect = 'text';
+  ta.style.webkitUserSelect = 'text';
+
+  document.body.appendChild(ta);
+  try {
+    ta.focus();
+    ta.select();
+    ta.setSelectionRange(0, value.length);
+    return document.execCommand('copy');
+  } catch (_) {
+    return false;
+  } finally {
+    if (document.body.contains(ta)) {
+      document.body.removeChild(ta);
+    }
+  }
+}
+

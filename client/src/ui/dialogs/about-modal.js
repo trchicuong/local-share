@@ -4,16 +4,24 @@ import { events } from '../../core/events.js';
 export class AboutModal {
   constructor(modalElement) {
     this.modal = modalElement;
+    this.isOpen = false;
 
     events.on('language-changed', () => {
       if (!this.modal.classList.contains('hidden') && this.isOpen) {
         this.render();
       }
     });
+
+    events.on('modal-opened', (modal) => {
+      if (modal !== this) {
+        this.isOpen = false;
+      }
+    });
   }
 
   open() {
     this.isOpen = true;
+    events.emit('modal-opened', this);
     this.render();
   }
 

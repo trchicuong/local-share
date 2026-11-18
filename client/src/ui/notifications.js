@@ -48,6 +48,15 @@ export class Notifications {
       });
     });
 
+    events.on('transfer-cancelled', (data) => {
+      if (data?.remote) {
+        this.show({
+          title: t('hud.cancelled'),
+          type: 'info',
+        });
+      }
+    });
+
     events.on('transfer-error', (err) => {
       this.show({
         title: t('toast.transferError'),

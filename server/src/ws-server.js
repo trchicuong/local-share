@@ -38,11 +38,20 @@ export default class LoSWsServer {
     const existingPeer = this.activePeers.get(peer.id);
     if (existingPeer && existingPeer !== peer) {
       this.activePeers.delete(peer.id);
+      if (!peer.hasCustomDisplayName && existingPeer.name?.displayName) {
+        peer.name.displayName = existingPeer.name.displayName;
+      }
       const oldTimer = this.keepAliveTimers.get(existingPeer);
       if (oldTimer) {
         clearTimeout(oldTimer);
         this.keepAliveTimers.delete(existingPeer);
       }
+      if (existingPeer.pairKey) {
+        this.roomManager.cancelPairing(existingPeer.pairKey);
+      }
+      this.roomManager.leaveIpRoom(existingPeer);
+      this.roomManager.leaveAllSecretRooms(existingPeer);
+      this.roomManager.leavePublicRoom(existingPeer);
       try {
         existingPeer.socket.terminate();
       } catch (_) {
@@ -172,7 +181,7 @@ export default class LoSWsServer {
         if (Array.isArray(message.secrets)) {
           const notifiedPeers = new Set();
           for (const secret of message.secrets) {
-            const otherPeers = this.roomManager.leaveSecretRoom(sender, secret);
+            const otherPeers = this.roomManager.deleteSecretRoom(secret, sender);
             for (const other of otherPeers) {
               notifiedPeers.add(other);
               this._send(other, {

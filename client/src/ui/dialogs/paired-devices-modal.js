@@ -7,6 +7,13 @@ import { t, getLanguage } from '../../utils/i18n.js';
 export class PairedDevicesModal {
   constructor(modalElement) {
     this.modal = modalElement;
+    this.isOpen = false;
+
+    events.on('modal-opened', (modal) => {
+      if (modal !== this) {
+        this.isOpen = false;
+      }
+    });
 
     events.on('pair-updated', () => {
       if (!this.modal.classList.contains('hidden') && this.isOpen) {
@@ -34,6 +41,7 @@ export class PairedDevicesModal {
 
   open() {
     this.isOpen = true;
+    events.emit('modal-opened', this);
     this.modal.classList.remove('hidden');
     this.render();
   }
@@ -47,8 +55,17 @@ export class PairedDevicesModal {
       if (peer.secret) {
         onlineSecrets.add(peer.secret);
       }
+      if (Array.isArray(peer.secrets)) {
+        for (const s of peer.secrets) {
+          onlineSecrets.add(s);
+        }
+      }
       for (const d of devices) {
-        if (d.secret === peer.secret || (peer.name?.displayName && d.displayName === peer.name.displayName)) {
+        if (
+          d.secret === peer.secret ||
+          (Array.isArray(peer.secrets) && peer.secrets.includes(d.secret)) ||
+          (peer.name?.displayName && d.displayName === peer.name.displayName)
+        ) {
           onlineSecrets.add(d.secret);
         }
       }

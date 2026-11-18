@@ -6,9 +6,34 @@ import { t, getLanguage, setLanguage } from '../../utils/i18n.js';
 export class SettingsModal {
   constructor(modalElement) {
     this.modal = modalElement;
+    this.isOpen = false;
+
+    events.on('modal-opened', (modal) => {
+      if (modal !== this) {
+        this.isOpen = false;
+      }
+    });
+
+    events.on('pair-updated', () => {
+      if (this.isOpen && !this.modal.classList.contains('hidden')) {
+        const nameInput = document.getElementById('settings-name-input');
+        const draftName = nameInput ? nameInput.value : null;
+        const wasFocused = document.activeElement === nameInput;
+        this.render();
+        if (draftName !== null) {
+          const newInput = document.getElementById('settings-name-input');
+          if (newInput) {
+            newInput.value = draftName;
+            if (wasFocused) newInput.focus();
+          }
+        }
+      }
+    });
   }
 
   open() {
+    this.isOpen = true;
+    events.emit('modal-opened', this);
     this.render();
   }
 
@@ -187,6 +212,7 @@ export class SettingsModal {
   }
 
   close() {
+    this.isOpen = false;
     this.modal.classList.add('hidden');
     this.modal.innerHTML = '';
   }

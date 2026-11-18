@@ -9,8 +9,9 @@
 - **Mã hóa đầu-cuối P2P**: Dữ liệu truyền trực tiếp giữa hai thiết bị qua WebRTC DataChannel (chuẩn mã hóa DTLS-SRTP). Máy chủ chỉ làm nhiệm vụ kết nối tín hiệu (Signaling), tuyệt đối không lưu trữ dữ liệu.
 - **Tự động nhận diện (LAN Discovery)**: Tự động phát hiện các thiết bị trong cùng mạng Wi-Fi hoặc Subnet IP nội bộ mà không cần cài đặt hay đăng nhập.
 - **Ghép đôi thiết bị & Phòng công khai**: Hỗ trợ ghép đôi vĩnh viễn qua mã PIN 6 số hoặc tham gia phòng công khai để chia sẻ tập tin qua Internet hoặc giữa các mạng khác nhau.
-- **Tối ưu hóa thiết bị di động (Mobile First)**: Tích hợp Web Share API cho phép chọn vị trí lưu qua hộp thoại "Lưu vào Tệp" trên iOS Safari; tự động đóng gói file ZIP khi chuyển nhiều tập tin.
-- **Truyền luồng Zero-RAM**: Sử dụng File System Access API và cơ chế kiểm soát dòng chảy (Backpressure Partition ACK) giúp truyền tập tin dung lượng lớn mà không gây tràn bộ nhớ RAM.
+- **Tối ưu hóa thiết bị di động (Mobile First)**: Tích hợp Web Share API cho phép chia sẻ và lưu tệp trực tiếp qua bảng hệ thống trên iOS Safari ("Lưu vào Tệp") và Android; đóng gói nhiều tập tin bằng chuẩn PKZIP (`STORE`) không sao chép bộ nhớ (Zero-Copy) với CRC-32 theo luồng.
+- **Truyền luồng Zero-RAM**: Kết hợp File System Access API, cơ chế kiểm soát dòng chảy (Backpressure Partition ACK), nén phân đoạn Blob 8 MB và tự động thu hồi bộ nhớ `ObjectURL` giúp truyền tập tin dung lượng lớn ổn định trên cả thiết bị di động cấu hình thấp.
+- **Đồng bộ thời gian thực (Real-Time Sync)**: Tự động đồng bộ tức thì tên hiển thị, trạng thái ghép đôi/hủy ghép đôi, phòng công khai, tiến trình truyền/hủy/từ chối và thiết lập đa tab mà không cần tải lại trang.
 - **Dự phòng WebSocket Relay**: Tự động chuyển hướng dữ liệu qua WebSocket khi môi trường mạng chặn WebRTC P2P (mạng 4G/5G hoặc tường lửa doanh nghiệp).
 - **Giao diện tối giản**: Phong cách radar đen tuyền trực quan, hỗ trợ chuyển đổi chế độ Radar / Lưới và song ngữ (Tiếng Anh mặc định, Tiếng Việt).
 - **Chuẩn PWA & Web Share Target**: Hỗ trợ cài đặt như ứng dụng native, tích hợp vào menu chia sẻ hệ thống của thiết bị và hoạt động ngoại tuyến khi mạng LAN không có Internet.
@@ -105,7 +106,7 @@ cp .env.example .env
 - `RATE_LIMIT`: Bật/tắt bảo vệ chống spam kết nối (mặc định: `true`).
 - `RTC_CONFIG`: Cấu hình danh sách máy chủ STUN/TURN tùy chỉnh (JSON).
 
-_Lưu ý về cổng:_ Hệ thống sử dụng cổng `3000` (hoặc cổng `80`/`443` nếu dùng Caddy).
+_Lưu ý về cổng & HTTPS:_ Hệ thống sử dụng cổng `3000` (hoặc cổng `80`/`443` nếu dùng Caddy). Các tính năng hệ thống trên di động như Web Share API yêu cầu ngữ cảnh bảo mật (`HTTPS` hoặc `localhost`); khi chạy qua mạng LAN HTTP thường, ứng dụng tự động dùng phương thức tải và sao chép dự phòng.
 
 ---
 
@@ -125,5 +126,5 @@ Dự án này luôn chào đón các đóng góp! Nếu bạn muốn sửa lỗi
 
 Nếu bạn có bất kỳ ý tưởng nào để cải thiện công cụ hoặc phát hiện lỗi, đừng ngần ngại mở một `Issue` trên repo này.
 
-Mọi thông tin khác, bạn có thể liên hệ với tôi qua:
-[**trchicuong.id.vn**](https://trchicuong.id.vn/)
+- Tài liệu hướng dẫn sử dụng & FAQ: [**trchicuong.gitbook.io/local-share**](https://trchicuong.gitbook.io/local-share)
+- Mọi thông tin khác: [**trchicuong.id.vn**](https://trchicuong.id.vn/)

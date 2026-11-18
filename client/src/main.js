@@ -2,7 +2,7 @@ import { events } from './core/events.js';
 import { signaling } from './core/signaling.js';
 import { storage } from './utils/storage.js';
 import { detectDevice, ICONS } from './utils/device.js';
-import { t, getLanguage } from './utils/i18n.js';
+import { t, getLanguage, setLanguage } from './utils/i18n.js';
 
 import { RadarCanvas } from './ui/radar-canvas.js';
 import { DataBeam } from './ui/data-beam.js';
@@ -206,6 +206,44 @@ class LoSApp {
     events.emit('radar-refresh');
   }
 
+  _syncPairedDevicesMetadata(peerList) {
+    let updated = false;
+    for (const p of peerList) {
+      if (!p) continue;
+      const secrets = new Set();
+      if (p.secret) secrets.add(p.secret);
+      if (Array.isArray(p.secrets)) {
+        for (const s of p.secrets) {
+          if (s) secrets.add(s);
+        }
+      }
+      for (const secret of secrets) {
+        const dev = storage.getPairedDevice(secret);
+        if (dev) {
+          const nextDisplayName = p.name?.displayName || dev.displayName;
+          const nextDeviceName = p.name?.deviceName || dev.deviceName;
+          const nextDeviceType = p.name?.deviceType || dev.deviceType;
+          if (
+            nextDisplayName !== dev.displayName ||
+            nextDeviceName !== dev.deviceName ||
+            nextDeviceType !== dev.deviceType
+          ) {
+            storage.savePairedDevice({
+              ...dev,
+              displayName: nextDisplayName,
+              deviceName: nextDeviceName,
+              deviceType: nextDeviceType,
+            });
+            updated = true;
+          }
+        }
+      }
+    }
+    if (updated) {
+      events.emit('pair-updated');
+    }
+  }
+
   _bindEvents() {
     // 1. Toggle View (Radar <-> Grid)
     document.getElementById('btn-toggle-view')?.addEventListener('click', (e) => {
@@ -319,34 +357,14 @@ class LoSApp {
       if (discoveryScope?.publicRoom !== undefined) {
         this.currentPublicRoom = discoveryScope.publicRoom;
       }
-      for (const p of peerList) {
-        if (p.roomType === 'secret' && p.secret) {
-          const dev = storage.getPairedDevice(p.secret);
-          if (dev) {
-            storage.savePairedDevice({
-              ...dev,
-              displayName: p.name?.displayName || dev.displayName,
-              deviceName: p.name?.deviceName || dev.deviceName,
-              deviceType: p.name?.deviceType || dev.deviceType,
-            });
-          }
-        }
-      }
+      this._syncPairedDevicesMetadata(peerList);
       this._updateDiscoveryBadges(discoveryScope);
     });
 
     events.on('peer-joined', (p, roomType, extra) => {
       const secret = extra?.secret || p.secret;
-      if (secret) {
-        const dev = storage.getPairedDevice(secret);
-        if (dev) {
-          storage.savePairedDevice({
-            ...dev,
-            displayName: p.name?.displayName || dev.displayName,
-            deviceName: p.name?.deviceName || dev.deviceName,
-            deviceType: p.name?.deviceType || dev.deviceType,
-          });
-        }
+      if (secret || (Array.isArray(p.secrets) && p.secrets.length > 0)) {
+        this._syncPairedDevicesMetadata([{ ...p, secret }]);
       }
       this._updateDiscoveryBadges();
     });
@@ -395,17 +413,47 @@ class LoSApp {
       // Real-time sync of paired device metadata when a paired peer changes their display name
       const existingPeer = this.peersView?.peers?.get(peer.id);
       const secret = peer.secret || existingPeer?.secret || (Array.isArray(existingPeer?.secrets) ? existingPeer.secrets[0] : null);
-      if (secret) {
-        const dev = storage.getPairedDevice(secret);
-        if (dev) {
-          storage.savePairedDevice({
-            ...dev,
-            displayName: peer.name?.displayName || dev.displayName,
-            deviceName: peer.name?.deviceName || dev.deviceName,
-            deviceType: peer.name?.deviceType || dev.deviceType,
-          });
-          events.emit('pair-updated');
+      const secrets = peer.secrets || existingPeer?.secrets;
+      if (secret || (Array.isArray(secrets) && secrets.length > 0)) {
+        this._syncPairedDevicesMetadata([{ ...peer, secret, secrets }]);
+      }
+    });
+
+    // Cross-tab real-time synchronization
+    window.addEventListener('storage', (e) => {
+      if (!e.key) return;
+      if (e.key === 'los_display_name' && e.newValue) {
+        signaling.changeDisplayName(e.newValue);
+      } else if (e.key === 'los_view_mode' && (e.newValue === 'radar' || e.newValue === 'grid')) {
+        if (this.peersView.viewMode !== e.newValue) {
+          this.peersView.setViewMode(e.newValue);
+          this._updateControlIcons();
         }
+      } else if (e.key === 'los_language' && (e.newValue === 'en' || e.newValue === 'vi')) {
+        if (getLanguage() !== e.newValue) {
+          setLanguage(e.newValue, localStorage.getItem('los_lang_chosen_by_user') === 'true');
+        }
+      } else if (e.key === 'los_paired_devices' || e.key === 'los_room_secrets') {
+        if (e.key === 'los_room_secrets') {
+          let oldSecrets = [];
+          let newSecrets = [];
+          try {
+            oldSecrets = e.oldValue ? JSON.parse(e.oldValue) : [];
+          } catch (_) {}
+          try {
+            newSecrets = e.newValue ? JSON.parse(e.newValue) : [];
+          } catch (_) {}
+          const newSet = new Set(Array.isArray(newSecrets) ? newSecrets : []);
+          const removed = (Array.isArray(oldSecrets) ? oldSecrets : []).filter((s) => !newSet.has(s));
+          if (removed.length > 0) {
+            signaling.send({ type: 'delete-room-secrets', secrets: removed });
+          }
+          if (Array.isArray(newSecrets) && newSecrets.length > 0) {
+            signaling.joinRoomSecrets(newSecrets);
+          }
+        }
+        events.emit('pair-updated');
+        this._updateDiscoveryBadges();
       }
     });
 
@@ -442,6 +490,7 @@ class LoSApp {
 
     events.on('transfer-completed', cleanupTransferVisuals);
     events.on('transfer-cancelled', cleanupTransferVisuals);
+    events.on('transfer-declined', cleanupTransferVisuals);
     events.on('transfer-error', cleanupTransferVisuals);
   }
 

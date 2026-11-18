@@ -69,6 +69,13 @@ export default class Peer {
     const parsedUa = parser(ua);
 
     this.rtcSupported = url.searchParams.get('webrtc') !== 'false';
+    this.sessionId = url.searchParams.get('session_id') || null;
+    const reqDisplayName = url.searchParams.get('display_name');
+    const cleanDisplayName =
+      typeof reqDisplayName === 'string' && reqDisplayName.trim()
+        ? reqDisplayName.trim().substring(0, 40)
+        : null;
+    this.hasCustomDisplayName = Boolean(cleanDisplayName);
 
     let deviceType = parsedUa.device.type || 'desktop';
     if (!parsedUa.device.type) {
@@ -83,12 +90,16 @@ export default class Peer {
     const browserName = parsedUa.browser.name || 'Web Browser';
 
     let deviceName = `${browserName} on ${osName}`;
-    if (parsedUa.device.model) {
-      deviceName = `${parsedUa.device.model} (${browserName})`;
+    const rawModel = parsedUa.device.model;
+    const isRealModel = rawModel && rawModel.length > 1 && rawModel !== 'K';
+    if (isRealModel) {
+      deviceName = `${rawModel} (${browserName})`;
+    } else if (deviceType === 'mobile' || deviceType === 'tablet') {
+      deviceName = `${osName} (${browserName})`;
     }
 
     this.name = {
-      displayName: generateRandomName(this.id),
+      displayName: cleanDisplayName || generateRandomName(this.id),
       deviceName: deviceName,
       deviceType: deviceType, // 'desktop' | 'mobile' | 'tablet'
       os: osName,
@@ -99,6 +110,7 @@ export default class Peer {
   getInfo() {
     return {
       id: this.id,
+      sessionId: this.sessionId,
       name: this.name,
       rtcSupported: this.rtcSupported,
     };

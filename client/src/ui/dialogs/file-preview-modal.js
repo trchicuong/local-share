@@ -9,7 +9,10 @@ export class FilePreviewModal {
     this.modal = modalElement;
     this.currentFiles = [];
     this.zipArchive = null;
+    this.zipPromise = null;
     this.selectedIndex = 0;
+    this.isOpen = false;
+    this.senderId = null;
 
     this._bindEvents();
   }
@@ -18,6 +21,27 @@ export class FilePreviewModal {
     events.on('transfer-completed', (data) => {
       if (data.type === 'receive' && (data.files || data.file)) {
         this.show(data);
+      }
+    });
+
+    events.on('modal-opened', (modal) => {
+      if (modal !== this) {
+        this.isOpen = false;
+      }
+    });
+
+    events.on('peer-updated', (peer) => {
+      if (
+        this.isOpen &&
+        this.senderId &&
+        this.senderId === peer.id &&
+        peer.name?.displayName &&
+        !this.modal.classList.contains('hidden')
+      ) {
+        const badge = this.modal.querySelector('.preview-sender .identity-badge');
+        if (badge) {
+          badge.textContent = peer.name.displayName;
+        }
       }
     });
   }
@@ -85,16 +109,87 @@ export class FilePreviewModal {
     }
   }
 
+  _toShareFile(f) {
+    if (!f) return null;
+    const blobData = f.blob || (f instanceof Blob ? f : null);
+    if (!blobData) return null;
+    const fileMime =
+      getMimeType(f.name, f.mime || (blobData instanceof Blob ? blobData.type : '')) ||
+      'application/octet-stream';
+    return new File([blobData], f.name || 'file', {
+      type: fileMime,
+      lastModified: Date.now(),
+    });
+  }
+
+  async _getOrCreateZip(files) {
+    if (this.zipArchive) return this.zipArchive;
+    if (this.zipPromise) return this.zipPromise;
+
+    const zippableFiles = (files || []).filter((f) => f && (f.blob || f instanceof Blob));
+    if (zippableFiles.length === 0) return null;
+
+    this.zipPromise = createZipFromFiles(zippableFiles)
+      .then((zip) => {
+        if (this.currentFiles === files) {
+          this.zipArchive = zip;
+        } else if (zip?.downloadUrl) {
+          URL.revokeObjectURL(zip.downloadUrl);
+        }
+        return zip;
+      })
+      .finally(() => {
+        this.zipPromise = null;
+      });
+
+    return this.zipPromise;
+  }
+
+  _scheduleMemoryCleanup(filesToClean = [], zipToClean = null) {
+    const filesCopy = Array.isArray(filesToClean) ? [...filesToClean] : [];
+    const zipCopy = zipToClean || null;
+    if (filesCopy.length === 0 && !zipCopy) return;
+
+    setTimeout(() => {
+      if (zipCopy?.downloadUrl) {
+        try {
+          URL.revokeObjectURL(zipCopy.downloadUrl);
+        } catch (_) {}
+      }
+      if (zipCopy) {
+        zipCopy.blob = null;
+      }
+      for (const f of filesCopy) {
+        if (f?.downloadUrl) {
+          try {
+            URL.revokeObjectURL(f.downloadUrl);
+          } catch (_) {}
+          f.downloadUrl = null;
+        }
+        if (f) {
+          f.blob = null;
+        }
+      }
+    }, 30000);
+  }
+
   async show(data) {
     const files = data.files && data.files.length > 0 ? data.files : (data.file ? [data.file] : []);
     if (files.length === 0) return;
+    this._scheduleMemoryCleanup(this.currentFiles, this.zipArchive);
+    this.isOpen = true;
+    this.senderId = data.senderId || null;
+    events.emit('modal-opened', this);
     this.currentFiles = files;
     this.zipArchive = null;
+    this.zipPromise = null;
     this.selectedIndex = 0;
 
     const senderName = data.senderName || t('peers.nearbyDevice');
     const isMulti = files.length > 1;
     const totalBytes = files.reduce((acc, f) => acc + (f.size || 0), 0);
+    const hasZippableBlobs = files.some((f) => Boolean(f && (f.blob || f instanceof Blob)));
+    const canZipMulti = isMulti && hasZippableBlobs;
     const isMobile = isMobileDevice();
     const autoDownload = storage.isAutoDownload();
 
@@ -136,22 +231,40 @@ export class FilePreviewModal {
       : t('preview.filesReceivedSingle');
 
     // Build shareable files for Web Share API on mobile devices
+    let canShareZip = false;
     let canShare = false;
-    if (isMobile && typeof navigator.share === 'function') {
+    if (typeof navigator.share === 'function') {
       try {
         if (typeof navigator.canShare === 'function') {
-          // Check capability with a standardized test file
-          const testFile = new File([''], 'test.zip', { type: 'application/zip' });
-          canShare = navigator.canShare({ files: [testFile] });
+          const testZip = new File(['x'], 'test.zip', { type: 'application/zip' });
+          canShareZip = navigator.canShare({ files: [testZip] });
+
+          if (isMobile) {
+            const actualSample = isMulti
+              ? files.map((f) => this._toShareFile(f)).filter(Boolean)
+              : [this._toShareFile(primaryFile)].filter(Boolean);
+            const canShareActual =
+              actualSample.length > 0 && navigator.canShare({ files: actualSample });
+            const canShareText = navigator.canShare({
+              files: [new File(['x'], 'test.txt', { type: 'text/plain' })],
+            });
+            canShare = canShareActual || canShareZip || canShareText;
+          }
         } else {
-          canShare = true;
+          canShareZip = isMobile;
+          canShare = isMobile;
         }
       } catch (_) {
-        canShare = true;
+        canShareZip = isMobile;
+        canShare = isMobile;
       }
     }
 
     // Dynamic action buttons
+    const downloadBtnLabel = isMulti
+      ? (canZipMulti ? t('preview.downloadZip') : t('preview.download'))
+      : (autoDownload ? t('preview.downloadAgain') : t('preview.download'));
+
     let actionsHtml = '';
     if (canShare) {
       actionsHtml = `
@@ -159,14 +272,14 @@ export class FilePreviewModal {
           ${t('preview.saveToFiles')}
         </button>
         <button class="btn btn-secondary" id="preview-download-btn">
-          ${isMulti ? t('preview.downloadZip') : (autoDownload ? t('preview.downloadAgain') : t('preview.download'))}
+          ${downloadBtnLabel}
         </button>
         <button class="btn btn-secondary" id="preview-close-btn">${t('preview.close')}</button>
       `;
     } else {
       actionsHtml = `
         <button class="btn btn-primary" id="preview-download-btn">
-          ${isMulti ? t('preview.downloadZip') : (autoDownload ? t('preview.downloadAgain') : t('preview.download'))}
+          ${downloadBtnLabel}
         </button>
         ${
           typeof navigator.share === 'function'
@@ -250,29 +363,25 @@ export class FilePreviewModal {
       });
     }
 
-    // Generate ZIP in background if multi-file
-    if (isMulti) {
-      createZipFromFiles(files)
-        .then((zip) => {
-          this.zipArchive = zip;
-        })
-        .catch((err) => {
-          console.error('[Zip generation failed]', err);
-        });
+    // Generate zero-copy ZIP bundle in background for multi-file batches
+    if (canZipMulti) {
+      this._getOrCreateZip(files).catch((err) => {
+        console.error('[Zip generation failed]', err);
+      });
     }
 
     const triggerDownloadAll = async () => {
       if (isMulti) {
-        if (!this.zipArchive) {
+        if (canZipMulti) {
           try {
-            this.zipArchive = await createZipFromFiles(files);
+            const zip = await this._getOrCreateZip(files);
+            if (zip?.downloadUrl) {
+              this._triggerDownload(zip);
+              return;
+            }
           } catch (e) {
             console.error('[Zip failed]', e);
           }
-        }
-        if (this.zipArchive?.downloadUrl) {
-          this._triggerDownload(this.zipArchive);
-          return;
         }
         for (const f of files) {
           this._triggerDownload(f);
@@ -293,35 +402,35 @@ export class FilePreviewModal {
       shareBtn.addEventListener('click', async () => {
         try {
           if (isMulti) {
-            // For multiple files, iOS Safari reliably shares a ZIP bundle with "Save to Files" option
-            if (!this.zipArchive) {
-              this.zipArchive = await createZipFromFiles(files);
-            }
-            if (this.zipArchive?.blob && navigator.share) {
-              const zipFile = new File(
-                [this.zipArchive.blob],
-                this.zipArchive.name || 'LocalShare_files.zip',
-                { type: 'application/zip', lastModified: Date.now() }
-              );
-              await navigator.share({
-                files: [zipFile],
-                title: this.zipArchive.name || `${files.length} files from ${senderName}`,
-              });
-              return;
+            if (canZipMulti && canShareZip) {
+              // For multiple files on browsers supporting ZIP share (e.g. iOS Safari), share a single ZIP bundle
+              const zip = await this._getOrCreateZip(files);
+              if (zip?.blob && navigator.share) {
+                const zipFile = new File(
+                  [zip.blob],
+                  zip.name || 'LocalShare_files.zip',
+                  { type: 'application/zip', lastModified: Date.now() }
+                );
+                await navigator.share({
+                  files: [zipFile],
+                  title: zip.name || `${files.length} files from ${senderName}`,
+                });
+                return;
+              }
+            } else if (navigator.share) {
+              const directFiles = files.map((f) => this._toShareFile(f)).filter(Boolean);
+              if (directFiles.length > 0 && (!navigator.canShare || navigator.canShare({ files: directFiles }))) {
+                await navigator.share({
+                  files: directFiles,
+                  title: `${directFiles.length} files from ${senderName}`,
+                });
+                return;
+              }
             }
           } else {
             // For single file, share with explicit MIME type
-            const blobData = primaryFile.blob || primaryFile;
-            const fileMime =
-              getMimeType(
-                primaryFile.name,
-                primaryFile.mime || (blobData instanceof Blob ? blobData.type : '')
-              ) || 'application/octet-stream';
-            const singleFile = new File([blobData], primaryFile.name, {
-              type: fileMime,
-              lastModified: Date.now(),
-            });
-            if (navigator.share) {
+            const singleFile = this._toShareFile(primaryFile);
+            if (singleFile && navigator.share && (!navigator.canShare || navigator.canShare({ files: [singleFile] }))) {
               await navigator.share({
                 files: [singleFile],
                 title: primaryFile.name,
@@ -385,13 +494,14 @@ export class FilePreviewModal {
   }
 
   close() {
-    if (this.zipArchive?.downloadUrl) {
-      URL.revokeObjectURL(this.zipArchive.downloadUrl);
-    }
+    this.isOpen = false;
+    this.senderId = null;
+    this._scheduleMemoryCleanup(this.currentFiles, this.zipArchive);
     this.modal.classList.add('hidden');
     this.modal.innerHTML = '';
     this.currentFiles = [];
     this.zipArchive = null;
+    this.zipPromise = null;
     this.selectedIndex = 0;
   }
 }

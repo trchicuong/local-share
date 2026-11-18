@@ -3,17 +3,34 @@ import { signaling } from '../../core/signaling.js';
 import { events } from '../../core/events.js';
 import { SegmentedInput } from '../segmented-input.js';
 import { t, getLanguage } from '../../utils/i18n.js';
+import { copyToClipboard } from '../../utils/formatters.js';
 
 export class PublicRoomModal {
   constructor(modalElement) {
     this.modal = modalElement;
     this.currentRoom = sessionStorage.getItem('los_public_room') || null;
     this.segmentedInput = null;
+    this.isOpen = false;
+
+    events.on('modal-opened', (modal) => {
+      if (modal !== this) {
+        this.isOpen = false;
+        this.segmentedInput = null;
+      }
+    });
+
+    events.on('language-changed', () => {
+      if (this.isOpen && !this.modal.classList.contains('hidden')) {
+        this.open();
+      }
+    });
 
     events.on('public-room-joined', (data) => {
       this.currentRoom = data.roomId;
       sessionStorage.setItem('los_public_room', data.roomId);
-      this.close();
+      if (this.isOpen) {
+        this.close();
+      }
       events.emit('notify', {
         title: t('public.title'),
         message: t('public.joinedSuccess', { room: data.roomId }),
@@ -24,7 +41,9 @@ export class PublicRoomModal {
     events.on('public-room-left', (data) => {
       this.currentRoom = null;
       sessionStorage.removeItem('los_public_room');
-      this.close();
+      if (this.isOpen) {
+        this.close();
+      }
       events.emit('notify', {
         title: t('public.title'),
         message: t('public.leftSuccess'),
@@ -41,6 +60,8 @@ export class PublicRoomModal {
   }
 
   open() {
+    this.isOpen = true;
+    events.emit('modal-opened', this);
     this.modal.classList.remove('hidden');
 
     if (this.currentRoom) {
@@ -94,15 +115,14 @@ export class PublicRoomModal {
         }).catch(() => {});
       }
 
-      document.getElementById('copy-room-link-btn')?.addEventListener('click', () => {
+      document.getElementById('copy-room-link-btn')?.addEventListener('click', async () => {
         const url = `${window.location.origin}?room=${this.currentRoom}`;
-        if (navigator.clipboard) {
-          navigator.clipboard.writeText(url).then(() => {
-            events.emit('notify', {
-              title: t('public.copyLink'),
-              message: t('public.linkCopied'),
-              type: 'success',
-            });
+        const ok = await copyToClipboard(url);
+        if (ok) {
+          events.emit('notify', {
+            title: t('public.copyLink'),
+            message: t('public.linkCopied'),
+            type: 'success',
           });
         }
       });
@@ -116,6 +136,7 @@ export class PublicRoomModal {
       if (switchContainer) {
         this.segmentedInput = new SegmentedInput(switchContainer, {
           regex: /^[a-zA-Z0-9]$/,
+          transform: (val) => val.toUpperCase(),
           onChange: (val) => {
             if (val.length === 5) {
               switchBtn?.removeAttribute('disabled');
@@ -171,6 +192,7 @@ export class PublicRoomModal {
       if (joinContainer) {
         this.segmentedInput = new SegmentedInput(joinContainer, {
           regex: /^[a-zA-Z0-9]$/,
+          transform: (val) => val.toUpperCase(),
           onChange: (val) => {
             if (val.length === 5) {
               joinBtn?.removeAttribute('disabled');
@@ -198,6 +220,7 @@ export class PublicRoomModal {
   }
 
   close() {
+    this.isOpen = false;
     this.modal.classList.add('hidden');
     this.modal.innerHTML = '';
     this.segmentedInput = null;

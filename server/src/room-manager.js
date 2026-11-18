@@ -79,6 +79,26 @@ export default class RoomManager {
     return affected;
   }
 
+  deleteSecretRoom(secret, initiatorPeer = null) {
+    const room = this.secretRooms.get(secret);
+    if (!room) {
+      if (initiatorPeer) initiatorPeer.roomSecrets.delete(secret);
+      return [];
+    }
+    const otherPeers = [];
+    for (const [id, p] of room) {
+      p.roomSecrets.delete(secret);
+      if (!initiatorPeer || id !== initiatorPeer.id) {
+        otherPeers.push(p);
+      }
+    }
+    this.secretRooms.delete(secret);
+    if (initiatorPeer) {
+      initiatorPeer.roomSecrets.delete(secret);
+    }
+    return otherPeers;
+  }
+
   // --- Public Rooms (Temporary PIN code) ---
   joinPublicRoom(peer, roomId) {
     if (peer.publicRoomId) {

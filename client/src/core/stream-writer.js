@@ -1,4 +1,7 @@
 import { sanitizeFilename } from '../utils/formatters.js';
+import { updateCrc32 } from '../utils/mime.js';
+
+const SEGMENT_FLUSH_SIZE = 8 * 1024 * 1024; // 8 MB per segmented Blob compaction
 
 /**
  * File Stream Writer (Receiver Side)
@@ -20,6 +23,9 @@ export class FileStreamWriter {
     this.receivedBytes = 0;
     this.bytesSinceLastAck = 0;
     this.chunks = [];
+    this.segments = [];
+    this.chunksByteLength = 0;
+    this._crc = 0xffffffff;
     this.fileHandle = options.fileHandle || null;
     this.writableStream = null;
     this.aborted = false;
@@ -67,7 +73,14 @@ export class FileStreamWriter {
         return;
       }
     } else {
+      this._crc = updateCrc32(this._crc, new Uint8Array(arrayBuffer));
       this.chunks.push(arrayBuffer);
+      this.chunksByteLength += chunkLength;
+      if (this.chunksByteLength >= SEGMENT_FLUSH_SIZE) {
+        this.segments.push(new Blob(this.chunks));
+        this.chunks = [];
+        this.chunksByteLength = 0;
+      }
     }
 
     this.onProgress(this.receivedBytes, this.size, this.bytesSinceLastAck);
@@ -99,15 +112,22 @@ export class FileStreamWriter {
         this.onError(err);
       }
     } else {
+      if (this.chunks.length > 0) {
+        this.segments.push(new Blob(this.chunks));
+        this.chunks = [];
+        this.chunksByteLength = 0;
+      }
       // Create final Blob and object URL for download
-      const blob = new Blob(this.chunks, { type: this.mime });
-      this.chunks = []; // Release chunks memory immediately
+      const blob = new Blob(this.segments, { type: this.mime });
+      this.segments = []; // Release segment references immediately
       const downloadUrl = URL.createObjectURL(blob);
+      const crc32 = (this._crc ^ 0xffffffff) >>> 0;
 
       this.onComplete({
         name: this.name,
         size: this.receivedBytes,
         mime: this.mime,
+        crc32: crc32,
         blob: blob,
         downloadUrl: downloadUrl,
         savedDirectly: false,
@@ -122,5 +142,7 @@ export class FileStreamWriter {
       this.writableStream = null;
     }
     this.chunks = [];
+    this.segments = [];
+    this.chunksByteLength = 0;
   }
 }
